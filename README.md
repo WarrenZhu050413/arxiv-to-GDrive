@@ -6,7 +6,7 @@ The motivation for developing this extension is to enable better collaboration w
 
 (Note: I am personally new to javascript. Most of the code is written with the help of Gemini 2.5 pro. Do not trust it completely.)
 
-The repository is built on top of https://github.com/yoheikikuta/arxiv-pdf-downloader by yoheikikuta. Its main change is to have added a folder download definition.
+The repository is built on top of https://github.com/yoheikikuta/arxiv-pdf-downloader by yoheikikuta. Currently, it added folder organization functionality beyond the original implementation.
 
 <p align="center">
   <img src="https://imgur.com/utyIndE.gif" />

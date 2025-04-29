@@ -30,7 +30,7 @@
         "service_worker": "background.js"
     },
     "oauth2": {
-        "client_id": "825891240033-l9knbtgoro0qp9rsb11o1jqh96vohh99.apps.googleusercontent.com",
+        "client_id": "36293396270-ivqrqj7jtpt483ilg06uo1s65eism0h7.apps.googleusercontent.com",
         "scopes": [
             "https://www.googleapis.com/auth/drive"
         ]

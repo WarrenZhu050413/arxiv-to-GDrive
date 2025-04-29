@@ -2,8 +2,22 @@
 <html lang="en">
     <head>
         <meta charset="utf-8">
+        <style>
+            body { width: 300px; padding: 10px; font-family: sans-serif; }
+            label, input, button { display: block; margin-bottom: 8px; }
+            input { width: calc(100% - 10px); }
+            #status { font-size: 0.9em; color: green; }
+        </style>
     </head>
-    <body style="width: 350px">
-        <p><b>[command + b] (for MAC) or [ctrl + shift + b] (OTHERS)</b> on arXiv abstract or pdf pages to save pdf files.</p>
+    <body>
+        <h4>arXiv Downloader Settings</h4>
+        <label for="folderNameInput">Google Drive Folder:</label>
+        <input type="text" id="folderNameInput" placeholder="e.g., arXiv Papers">
+        <button id="saveFolderButton">Save Folder</button>
+        <div id="status"></div>
+        <hr>
+        <p>Use <b>[CMD+B]</b> (Mac) or <b>[CTRL+SHIFT+B]</b> (Others) on arXiv pages to save to the folder above.</p>
+
+        <script src="popup.js"></script>
     </body>
 </html>

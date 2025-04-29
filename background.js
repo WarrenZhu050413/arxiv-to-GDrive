@@ -77,8 +77,9 @@ class GoogleDriveUploader {
         this.uploadUrl = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
     }
 
-    async uploadFile(file) {
-        console.log('Uploading file:', file);
+    // Specify the folder name to upload the file to
+    async uploadFile(file, folderName) { 
+        console.log(`Uploading file: ${file.name} to folder: ${folderName}`); // <<< Log folder name
 
         try {
             const token = await this.authenticateUser();
@@ -88,7 +89,8 @@ class GoogleDriveUploader {
             }
 
             const blob = await this.fetchFileBlob(file.path);
-            const parentFolder = await this.createFolder('arXiv', token);
+            // Use the provided folderName instead of hardcoded 'arXiv'
+            const parentFolder = await this.createFolder(folderName, token); // <<< Use folderName parameter
             console.log('Folder created or found:', parentFolder);
 
             const result = await this.putOnDrive({
@@ -102,8 +104,8 @@ class GoogleDriveUploader {
             console.log('File uploaded successfully:', result);
             return result;
         } catch (error) {
-            console.error('Error uploading file:', error);
-            throw error;
+            console.error(`Error uploading file to folder '${folderName}':`, error); // <<< Add folder context to error
+            throw error; // Re-throw to be caught by the command listener
         }
     }
 
@@ -145,6 +147,42 @@ class GoogleDriveUploader {
             const searchResponse = await fetch(folderSearchUrl, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
+
+            if (!searchResponse.ok) {
+                // ---> Error Differentiation Logic <---
+                const status = searchResponse.status;
+                let errorType = 'Unknown API Error';
+                let errorMessage = `Google Drive API error! Status: ${status}`;
+
+                if (status === 401) {
+                    errorType = 'Authentication Error';
+                    errorMessage = 'Authentication failed. Please try logging in again.';
+                     // Consider triggering re-authentication if possible/needed
+                } else if (status === 403) {
+                    errorType = 'Authorization/Permission Error';
+                    errorMessage = 'Permission denied. Ensure the extension has Drive access or check rate limits.';
+                } else if (status === 400) {
+                    errorType = 'Invalid Query Error';
+                    errorMessage = 'The request sent to Google Drive was malformed.';
+                } else if (status >= 500 && status < 600) {
+                    errorType = 'Server Error';
+                    errorMessage = 'Google Drive server issue. Please try again later.';
+                }
+
+                try {
+                    const errorBody = await searchResponse.json(); // Or .text()
+                    console.error('Drive API error body:', errorBody);
+                    if (errorBody && errorBody.error && errorBody.error.message) {
+                        errorMessage += ` Details: ${errorBody.error.message}`;
+                    }
+                } catch (parseError) {
+                    console.error('Could not parse error response body:', parseError);
+                }
+
+                console.error(`${errorType}: ${errorMessage}`);
+                throw new Error(errorMessage);
+            }
+
             const searchResult = await searchResponse.json();
             console.log('Folder search result:', searchResult);
 
@@ -152,6 +190,8 @@ class GoogleDriveUploader {
                 return { id: searchResult.files[0].id };
             }
 
+            // If not found, create it
+            console.log(`Folder '${folderName}' not found. Creating...`);
             const createResponse = await fetch(this.apiUrl, {
                 method: 'POST',
                 headers: {
@@ -171,8 +211,17 @@ class GoogleDriveUploader {
             console.log('Folder created:', createResult);
             return { id: createResult.id };
         } catch (error) {
-            console.error('Error creating/searching folder:', error);
-            throw error;
+            // Catch fetch-level errors (e.g., network issues) or re-thrown errors
+            if (error instanceof TypeError && error.message === 'Failed to fetch') {
+                 // This often indicates a network error or CORS issue (less likely here with Drive API)
+                 console.error('Network Error:', error);
+                 throw new Error('Network error. Please check your connection.');
+            } else {
+                // Handle errors thrown from the !response.ok block or other issues
+                console.error('Error creating/searching folder:', error);
+                // Re-throw the potentially more descriptive error
+                throw error;
+            }
         }
     }
 
@@ -210,28 +259,50 @@ class GoogleDriveUploader {
 chrome.commands.onCommand.addListener(async (command) => {
     console.log('Command received:', command);
     chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+        if (chrome.runtime.lastError || !tabs || tabs.length === 0) {
+             console.error("Error getting current tab:", chrome.runtime.lastError || "No active tab found.");
+             showNotification('FAILURE', 'Could not get current tab information.', 'failure');
+             return;
+         }
         let tab = tabs[0];
         console.log('Selected tab:', tab);
 
-        try {
-            const result = await getUrlAndName(tab);
-            if (!result) {
-                throw new Error('Invalid URL');
+        // Retrieve the folder name from storage first
+        chrome.storage.sync.get(['driveFolderName'], async (storageResult) => {
+            if (chrome.runtime.lastError) {
+                console.error("Error retrieving folder name from storage:", chrome.runtime.lastError);
+                showNotification('FAILURE', 'Could not read extension settings.', 'failure');
+                return;
             }
 
-            const [filepdf_url, save_filename] = result;
-            tab.url = filepdf_url;
-            console.log('File URL and name:', filepdf_url, save_filename);
+            // Use saved name or default to 'arXiv'
+            const folderName = storageResult.driveFolderName || 'arXiv';
+            console.log(`Using Google Drive folder: '${folderName}'`);
 
-            const googleDriveUploader = new GoogleDriveUploader();
-            const request = createRequestObj(save_filename, tab);
-            await googleDriveUploader.uploadFile(request.file);
+            try {
+                const urlResult = await getUrlAndName(tab);
+                if (!urlResult) {
+                    // getUrlAndName logs its own message if URL is invalid
+                    showNotification('INFO', 'Current page is not a valid arXiv abstract or PDF page.', 'info');
+                    return; // Exit gracefully
+                }
 
-            showNotification('SUCCESS', `File ${save_filename} uploaded successfully.`, 'success');
-        } catch (error) {
-            console.error('Error in command listener:', error);
-            showNotification('FAILURE', `Error: ${error.message}`, 'failure');
-        }
+                const [filepdf_url, save_filename] = urlResult;
+                const fileInfo = { path: filepdf_url, name: save_filename }; // Use a file info object
+                console.log('File URL and name:', filepdf_url, save_filename);
+
+                const googleDriveUploader = new GoogleDriveUploader();
+                // Pass the retrieved folderName to uploadFile
+                await googleDriveUploader.uploadFile(fileInfo, folderName); // <<< Pass folderName here
+
+                showNotification('SUCCESS', `File '${save_filename}' uploaded to folder '${folderName}' successfully.`, 'success');
+
+            } catch (error) {
+                console.error('Error processing command:', error);
+                // Provide more context in the error notification
+                showNotification('FAILURE', `Error uploading to '${folderName}': ${error.message}`, 'failure');
+            }
+        });
     });
 });
 

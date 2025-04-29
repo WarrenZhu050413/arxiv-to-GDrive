@@ -7,8 +7,10 @@ const fetchTitleFromAbsPage = async (url) => {
         const titleMatch = text.match(/<title>(.*?)<\/title>/);
         if (!titleMatch || titleMatch.length < 2) throw new Error('Title not found in abs page');
 
-        const title = titleMatch[1].replace(/<("[^"]*"|'[^']*'|[^'">])*>/g, '');
-        return title;
+        // Basic cleaning of title for filename safety
+        const rawTitle = titleMatch[1].replace(/<("[^"]*"|'[^']*'|[^'">])*>/g, '');
+        const safeTitle = rawTitle.replace(/[\/\\?%*:|"<>]/g, '-'); // Replace invalid filename chars
+        return safeTitle;
     } catch (error) {
         console.error('Error fetching title from abs page:', error);
         return null;
@@ -25,7 +27,8 @@ const getUrlAndName = async (tab) => {
     if (patternAbst.test(url)) {
         const [prefix, fileId] = url.split("abs");
         filePdfUrl = `${prefix}pdf${fileId}.pdf`;
-        title = await fetchTitleFromAbsPage(url);
+        absUrl = url; // Store abs url to fetch title
+        title = await fetchTitleFromAbsPage(absUrl);
     } else if (patternPdf.test(url)) {
         filePdfUrl = url;
         const paperId = url.split('/').pop().replace(".pdf", "");
@@ -37,24 +40,20 @@ const getUrlAndName = async (tab) => {
     }
 
     if (title) {
-        const saveFilename = `${title}.pdf`;
+        // Ensure title exists and append .pdf
+        const saveFilename = `${title || 'arxiv_paper'}.pdf`; // Use default if title fetch failed
         return [filePdfUrl, saveFilename];
     } else {
-        return null;
+         console.error("Failed to determine filename.");
+        // Attempt to create a fallback name based on URL if title fails
+        const fallbackId = url.split('/').pop().replace(".pdf", "").replace("abs/", "");
+        const fallbackFilename = `arxiv_${fallbackId || 'unknown'}.pdf`;
+        console.log(`Using fallback filename: ${fallbackFilename}`);
+        return [filePdfUrl, fallbackFilename];
     }
 };
 
-const createRequestObj = (name, tab) => {
-    const file = {
-        name: name,
-        path: tab.url
-    };
-    return {
-        file: file,
-        action: 'putFileOnGoogleDrive',
-        tab: tab.id
-    };
-};
+// createRequestObj is no longer used directly in the command listener
 
 const showNotification = (title, message, type) => {
     chrome.notifications.create('', {
@@ -77,9 +76,8 @@ class GoogleDriveUploader {
         this.uploadUrl = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
     }
 
-    // Specify the folder name to upload the file to
-    async uploadFile(file, folderName) { 
-        console.log(`Uploading file: ${file.name} to folder: ${folderName}`); // <<< Log folder name
+    async uploadFile(file, folderPath) {
+        console.log(`Uploading file: ${file.name} to path: ${folderPath}`);
 
         try {
             const token = await this.authenticateUser();
@@ -89,23 +87,24 @@ class GoogleDriveUploader {
             }
 
             const blob = await this.fetchFileBlob(file.path);
-            // Use the provided folderName instead of hardcoded 'arXiv'
-            const parentFolder = await this.createFolder(folderName, token); // <<< Use folderName parameter
-            console.log('Folder created or found:', parentFolder);
+
+            // Get the final parent folder ID using the path 
+            const parentFolderId = await this.findOrCreateFolderHierarchy(folderPath, token);
+            console.log(`Final parent folder ID: ${parentFolderId} for path: ${folderPath}`);
 
             const result = await this.putOnDrive({
                 blob: blob,
                 filename: file.name,
                 mimetype: blob.type,
-                parent: parentFolder.id,
+                parent: parentFolderId,
                 token: token
             });
 
             console.log('File uploaded successfully:', result);
             return result;
         } catch (error) {
-            console.error(`Error uploading file to folder '${folderName}':`, error); // <<< Add folder context to error
-            throw error; // Re-throw to be caught by the command listener
+            console.error(`Error uploading file to path '${folderPath}':`, error);
+            throw error;
         }
     }
 
@@ -115,9 +114,9 @@ class GoogleDriveUploader {
             chrome.identity.getAuthToken({ 'interactive': true }, (token) => {
                 if (chrome.runtime.lastError) {
                     console.error(chrome.runtime.lastError);
-                    reject(new Error(chrome.runtime.lastError.message));
+                    reject(new Error(`Authentication failed: ${chrome.runtime.lastError.message}`));
                 } else {
-                    console.log('Authenticated, token:', token);
+                    console.log('Authenticated successfully.');
                     resolve(token);
                 }
             });
@@ -128,102 +127,73 @@ class GoogleDriveUploader {
         try {
             const response = await fetch(filePath);
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                throw new Error(`HTTP error fetching PDF! status: ${response.status}`);
             }
             return await response.blob();
         } catch (error) {
-            console.error('Error fetching file:', error);
+            console.error('Error fetching file blob:', error);
             throw error;
         }
     }
 
-    async createFolder(folderName, token) {
-        console.log('Creating folder:', folderName);
+    async findOrCreateFolderHierarchy(folderPath, token) {
+        const pathComponents = folderPath.split('/').filter(Boolean);
+        let parentId = 'root'; 
 
-        const query = encodeURIComponent(`name='${folderName}' and mimeType='application/vnd.google-apps.folder'`);
-        const folderSearchUrl = `${this.apiUrl}?q=${query}`;
+        console.log(`Resolving path components: ${pathComponents.join('/')}`);
 
-        try {
-            const searchResponse = await fetch(folderSearchUrl, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+        for (const component of pathComponents) {
+            console.log(`Searching for folder '${component}' within parent '${parentId}'...`);
+            const query = encodeURIComponent(`name='${component}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`);
+            const folderSearchUrl = `${this.apiUrl}?q=${query}&fields=files(id)`; // Only request ID
 
-            if (!searchResponse.ok) {
-                // ---> Error Differentiation Logic <---
-                const status = searchResponse.status;
-                let errorType = 'Unknown API Error';
-                let errorMessage = `Google Drive API error! Status: ${status}`;
+            try {
+                const searchResponse = await fetch(folderSearchUrl, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
 
-                if (status === 401) {
-                    errorType = 'Authentication Error';
-                    errorMessage = 'Authentication failed. Please try logging in again.';
-                     // Consider triggering re-authentication if possible/needed
-                } else if (status === 403) {
-                    errorType = 'Authorization/Permission Error';
-                    errorMessage = 'Permission denied. Ensure the extension has Drive access or check rate limits.';
-                } else if (status === 400) {
-                    errorType = 'Invalid Query Error';
-                    errorMessage = 'The request sent to Google Drive was malformed.';
-                } else if (status >= 500 && status < 600) {
-                    errorType = 'Server Error';
-                    errorMessage = 'Google Drive server issue. Please try again later.';
+                if (!searchResponse.ok) {
+                    const errorBody = await searchResponse.text();
+                    throw new Error(`Google Drive API error searching folder '${component}' (Status: ${searchResponse.status}): ${errorBody}`);
                 }
 
-                try {
-                    const errorBody = await searchResponse.json(); // Or .text()
-                    console.error('Drive API error body:', errorBody);
-                    if (errorBody && errorBody.error && errorBody.error.message) {
-                        errorMessage += ` Details: ${errorBody.error.message}`;
+                const searchResult = await searchResponse.json();
+
+                if (searchResult.files && searchResult.files.length > 0) {
+                    parentId = searchResult.files[0].id;
+                    console.log(`Folder '${component}' found with ID: ${parentId}`);
+                } else {
+                    console.log(`Folder '${component}' not found. Creating within parent '${parentId}'...`);
+                    const createResponse = await fetch(this.apiUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                            name: component,
+                            parents: [parentId],
+                            mimeType: 'application/vnd.google-apps.folder'
+                        })
+                    });
+
+                    if (!createResponse.ok) {
+                       const errorBody = await createResponse.text();
+                       throw new Error(`Google Drive API error creating folder '${component}' (Status: ${createResponse.status}): ${errorBody}`);
                     }
-                } catch (parseError) {
-                    console.error('Could not parse error response body:', parseError);
+
+                    const createResult = await createResponse.json();
+                    parentId = createResult.id;
+                    console.log(`Folder '${component}' created with ID: ${parentId}`);
                 }
-
-                console.error(`${errorType}: ${errorMessage}`);
-                throw new Error(errorMessage);
-            }
-
-            const searchResult = await searchResponse.json();
-            console.log('Folder search result:', searchResult);
-
-            if (searchResult.files.length > 0) {
-                return { id: searchResult.files[0].id };
-            }
-
-            // If not found, create it
-            console.log(`Folder '${folderName}' not found. Creating...`);
-            const createResponse = await fetch(this.apiUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    name: folderName,
-                    parents: ['root'],
-                    mimeType: 'application/vnd.google-apps.folder'
-                })
-            });
-            if (!createResponse.ok) {
-                throw new Error(`HTTP error! status: ${createResponse.status}`);
-            }
-            const createResult = await createResponse.json();
-            console.log('Folder created:', createResult);
-            return { id: createResult.id };
-        } catch (error) {
-            // Catch fetch-level errors (e.g., network issues) or re-thrown errors
-            if (error instanceof TypeError && error.message === 'Failed to fetch') {
-                 // This often indicates a network error or CORS issue (less likely here with Drive API)
-                 console.error('Network Error:', error);
-                 throw new Error('Network error. Please check your connection.');
-            } else {
-                // Handle errors thrown from the !response.ok block or other issues
-                console.error('Error creating/searching folder:', error);
-                // Re-throw the potentially more descriptive error
-                throw error;
+            } catch (error) {
+                console.error(`Error processing folder component '${component}' in path '${folderPath}':`, error);
+                throw new Error(`Failed to find or create folder '${component}': ${error.message}`);
             }
         }
+        return parentId;
     }
+
 
     async putOnDrive(file) {
         const metadata = {
@@ -234,6 +204,8 @@ class GoogleDriveUploader {
         formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
         formData.append('file', file.blob);
 
+        console.log(`Uploading '${file.filename}' to parent folder ID: ${file.parent}`);
+
         try {
             const response = await fetch(this.uploadUrl, {
                 method: 'POST',
@@ -242,15 +214,17 @@ class GoogleDriveUploader {
                 },
                 body: formData
             });
+
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                 const errorBody = await response.text();
+                throw new Error(`Google Drive API error uploading file (Status: ${response.status}): ${errorBody}`);
             }
             const result = await response.json();
-            console.log('File upload result:', result);
+            console.log('File upload API result:', result);
             return result;
         } catch (error) {
-            console.error('Error uploading file to drive:', error);
-            throw error;
+            console.error('Error in putOnDrive:', error);
+            throw error; // Re-throw to be handled by uploadFile/command listener
         }
     }
 }
@@ -265,42 +239,55 @@ chrome.commands.onCommand.addListener(async (command) => {
              return;
          }
         let tab = tabs[0];
-        console.log('Selected tab:', tab);
+        console.log('Selected tab URL:', tab.url);
 
-        // Retrieve the folder name from storage first
-        chrome.storage.sync.get(['driveFolderName'], async (storageResult) => {
+        // Retrieve the folder *path* from storage first
+        chrome.storage.sync.get(['driveFolderPath'], async (storageResult) => { // Changed key
             if (chrome.runtime.lastError) {
-                console.error("Error retrieving folder name from storage:", chrome.runtime.lastError);
+                console.error("Error retrieving folder path from storage:", chrome.runtime.lastError);
                 showNotification('FAILURE', 'Could not read extension settings.', 'failure');
                 return;
             }
 
-            // Use saved name or default to 'arXiv'
-            const folderName = storageResult.driveFolderName || 'arXiv';
-            console.log(`Using Google Drive folder: '${folderName}'`);
+            // Use saved path or default to 'arXiv'
+            const folderPath = storageResult.driveFolderPath || 'arXiv';
+            console.log(`Using Google Drive path: '${folderPath}'`);
 
             try {
                 const urlResult = await getUrlAndName(tab);
                 if (!urlResult) {
-                    // getUrlAndName logs its own message if URL is invalid
                     showNotification('INFO', 'Current page is not a valid arXiv abstract or PDF page.', 'info');
-                    return; // Exit gracefully
+                    return;
                 }
 
                 const [filepdf_url, save_filename] = urlResult;
-                const fileInfo = { path: filepdf_url, name: save_filename }; // Use a file info object
-                console.log('File URL and name:', filepdf_url, save_filename);
+                // Basic check for valid URL and filename
+                if (!filepdf_url || !save_filename) {
+                     throw new Error("Could not determine PDF URL or filename.");
+                }
+
+                const fileInfo = { path: filepdf_url, name: save_filename };
+                console.log('Attempting to download:', fileInfo);
 
                 const googleDriveUploader = new GoogleDriveUploader();
-                // Pass the retrieved folderName to uploadFile
-                await googleDriveUploader.uploadFile(fileInfo, folderName); // <<< Pass folderName here
+                // Pass the retrieved folderPath to uploadFile
+                await googleDriveUploader.uploadFile(fileInfo, folderPath);
 
-                showNotification('SUCCESS', `File '${save_filename}' uploaded to folder '${folderName}' successfully.`, 'success');
+                showNotification('SUCCESS', `File '${save_filename}' uploaded to path '${folderPath}' successfully.`, 'success');
 
             } catch (error) {
                 console.error('Error processing command:', error);
-                // Provide more context in the error notification
-                showNotification('FAILURE', `Error uploading to '${folderName}': ${error.message}`, 'failure');
+                let displayError = error.message || 'An unknown error occurred during upload.';
+                 if (displayError.includes("Authentication failed")) {
+                    displayError = "Authentication failed. Please try the command again.";
+                 } else if (displayError.includes("HTTP error fetching PDF")) {
+                     displayError = "Could not download the PDF from arXiv.";
+                 } else if (displayError.includes("Failed to find or create folder")) {
+                     displayError = `Error creating Drive folder structure: ${error.message}`;
+                 } else if (displayError.includes("Google Drive API error uploading file")) {
+                     displayError = `Drive upload failed: ${error.message}`;
+                 }
+                 showNotification('FAILURE', `Error uploading to '${folderPath}': ${displayError}`, 'failure');
             }
         });
     });

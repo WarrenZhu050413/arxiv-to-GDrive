@@ -4,6 +4,8 @@ This is a Chrome extension designed to download PDFs published on arXiv directly
 
 The motivation for developing this extension is to enable better collaboration with Gemini Advanced's GDrive integration to search for research works.
 
+(Note: I am personally new to javascript. Most of the code is written with the help of Gemini 2.5 pro. Do not trust it completely.)
+
 The repository is built on top of https://github.com/yoheikikuta/arxiv-pdf-downloader by yoheikikuta. Its main change is to have added a folder download definition.
 
 <p align="center">

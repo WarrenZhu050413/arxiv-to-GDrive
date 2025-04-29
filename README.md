@@ -1,6 +1,6 @@
 # arxiv-pdf-downloader
 
-This is a Chrome extension designed to download PDFs published on arXiv directly to your Google Drive. The folder downloaded can be specified by the user.
+This is a Chrome extension designed to download PDFs published on arXiv directly to your Google Drive. The folder downloaded can be specified by the user via the Chrome icon popup.
 
 The motivation for developing this extension is to enable better collaboration with Gemini Advanced's GDrive integration to search for research works.
 

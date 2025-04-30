@@ -93,9 +93,11 @@ document.addEventListener('DOMContentLoaded', () => {
             showStatus('Error loading settings.', 'red', 0);
         } else {
             updateUI(result.driveFolderPath, result.driveFolderPathHistory);
-            // Auto-focus the input field
+            // *** UPDATED: Auto-focus and move cursor to end ***
             folderPathInput.focus();
-            folderPathInput.select(); // Select existing text for easy replacement
+            // Set selection start and end position to the end of the text
+            const textLength = folderPathInput.value.length;
+            folderPathInput.setSelectionRange(textLength, textLength);
         }
     });
 });

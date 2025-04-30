@@ -1,3 +1,18 @@
+async function openExtensionPopup() {
+    try {
+      // Get the current window
+      const [currentWindow] = await chrome.windows.getLastFocused();
+      if (currentWindow) {
+        await chrome.action.openPopup();
+        console.log("Popup open requested.");
+      } else {
+        console.error("Could not get the last focused window.");
+      }
+    } catch (error) {
+      console.error("Error opening popup:", error);
+    }
+  }
+
 const fetchHtmlPageTitle = async (url) => {
     try {
         const response = await fetch(url);
@@ -332,65 +347,74 @@ class GoogleDriveUploader {
 
 chrome.commands.onCommand.addListener(async (command) => {
     console.log('Command received:', command);
-    chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
-        if (chrome.runtime.lastError || !tabs || tabs.length === 0) {
-             console.error("Error getting current tab:", chrome.runtime.lastError || "No active tab found.");
-             showNotification('FAILURE', 'Could not get current tab information.', 'failure');
-             return;
-         }
-        let tab = tabs[0];
-        console.log('Selected tab URL:', tab.url);
 
-        // Retrieve the folder *path* from storage first
-        chrome.storage.sync.get(['driveFolderPath'], async (storageResult) => { // Changed key
-            if (chrome.runtime.lastError) {
-                console.error("Error retrieving folder path from storage:", chrome.runtime.lastError);
-                showNotification('FAILURE', 'Could not read extension settings.', 'failure');
+    if (command === "_execute_action") {
+        openExtensionPopup();
+        return;
+    }
+
+    if (command === "SavePaper") {
+
+    chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+            if (chrome.runtime.lastError || !tabs || tabs.length === 0) {
+                console.error("Error getting current tab:", chrome.runtime.lastError || "No active tab found.");
+                showNotification('FAILURE', 'Could not get current tab information.', 'failure');
                 return;
             }
+            let tab = tabs[0];
+            console.log('Selected tab URL:', tab.url);
 
-            // Use saved path or default to 'papers'
-            const folderPath = storageResult.driveFolderPath || 'papers';
-            console.log(`Using Google Drive path: '${folderPath}'`);
-
-            try {
-                const urlResult = await getUrlAndName(tab);
-                if (!urlResult) {
-                    showNotification('INFO', 'Current page is not a supported paper page.', 'info');
+            // Retrieve the folder *path* from storage first
+            chrome.storage.sync.get(['driveFolderPath'], async (storageResult) => { // Changed key
+                if (chrome.runtime.lastError) {
+                    console.error("Error retrieving folder path from storage:", chrome.runtime.lastError);
+                    showNotification('FAILURE', 'Could not read extension settings.', 'failure');
                     return;
                 }
 
-                const [filepdf_url, save_filename] = urlResult;
-                // Basic check for valid URL and filename
-                if (!filepdf_url || !save_filename) {
-                     throw new Error("Could not determine PDF URL or filename.");
+                // Use saved path or default to 'papers'
+                const folderPath = storageResult.driveFolderPath || 'papers';
+                console.log(`Using Google Drive path: '${folderPath}'`);
+
+                try {
+                    const urlResult = await getUrlAndName(tab);
+                    if (!urlResult) {
+                        showNotification('INFO', 'Current page is not a supported paper page.', 'info');
+                        return;
+                    }
+
+                    const [filepdf_url, save_filename] = urlResult;
+                    // Basic check for valid URL and filename
+                    if (!filepdf_url || !save_filename) {
+                        throw new Error("Could not determine PDF URL or filename.");
+                    }
+
+                    const fileInfo = { path: filepdf_url, name: save_filename };
+                    console.log('Attempting to download:', fileInfo);
+
+                    const googleDriveUploader = new GoogleDriveUploader();
+                    // Pass the retrieved folderPath to uploadFile
+                    await googleDriveUploader.uploadFile(fileInfo, folderPath);
+
+                    showNotification('SUCCESS', `File '${save_filename}' uploaded to path '${folderPath}' successfully.`, 'success');
+
+                } catch (error) {
+                    console.error('Error processing command:', error);
+                    let displayError = error.message || 'An unknown error occurred during upload.';
+                    if (displayError.includes("Authentication failed")) {
+                        displayError = "Authentication failed. Please try the command again.";
+                    } else if (displayError.includes("HTTP error fetching PDF")) {
+                        displayError = "Could not download the paper pdf.";
+                    } else if (displayError.includes("Failed to find or create folder")) {
+                        displayError = `Error creating Drive folder structure: ${error.message}`;
+                    } else if (displayError.includes("Google Drive API error uploading file")) {
+                        displayError = `Drive upload failed: ${error.message}`;
+                    }
+                    showNotification('FAILURE', `Error uploading to '${folderPath}': ${displayError}`, 'failure');
                 }
-
-                const fileInfo = { path: filepdf_url, name: save_filename };
-                console.log('Attempting to download:', fileInfo);
-
-                const googleDriveUploader = new GoogleDriveUploader();
-                // Pass the retrieved folderPath to uploadFile
-                await googleDriveUploader.uploadFile(fileInfo, folderPath);
-
-                showNotification('SUCCESS', `File '${save_filename}' uploaded to path '${folderPath}' successfully.`, 'success');
-
-            } catch (error) {
-                console.error('Error processing command:', error);
-                let displayError = error.message || 'An unknown error occurred during upload.';
-                 if (displayError.includes("Authentication failed")) {
-                    displayError = "Authentication failed. Please try the command again.";
-                 } else if (displayError.includes("HTTP error fetching PDF")) {
-                     displayError = "Could not download the paper pdf.";
-                 } else if (displayError.includes("Failed to find or create folder")) {
-                     displayError = `Error creating Drive folder structure: ${error.message}`;
-                 } else if (displayError.includes("Google Drive API error uploading file")) {
-                     displayError = `Drive upload failed: ${error.message}`;
-                 }
-                 showNotification('FAILURE', `Error uploading to '${folderPath}': ${displayError}`, 'failure');
-            }
+            });
         });
-    });
+    }
 });
 
 console.log('Background script loaded');

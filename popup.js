@@ -1,50 +1,112 @@
+// papers-to-GDrive/popup.js
+
 const folderPathInput = document.getElementById('folderPathInput');
 const saveButton = document.getElementById('savePathButton');
 const statusDiv = document.getElementById('status');
+const pastPathsDatalist = document.getElementById('pastPaths');
+const MAX_HISTORY = 10; // Max number of paths to remember
+const DEFAULT_PATH = 'papers';
 
-// Load the saved folder path when the popup opens
-document.addEventListener('DOMContentLoaded', () => {
-  chrome.storage.sync.get(['driveFolderPath'], (result) => {
-    if (chrome.runtime.lastError) {
-      console.error("Error retrieving folder path:", chrome.runtime.lastError);
-      statusDiv.textContent = 'Error loading settings.';
-      statusDiv.style.color = 'red';
-    } else if (result.driveFolderPath) {
-      folderPathInput.value = result.driveFolderPath;
-    } else {
-      // Set a default placeholder if nothing is saved yet
-      folderPathInput.placeholder = 'Default: papers';
-      folderPathInput.value = 'papers'; // Also set default value
+// --- Helper Function to Update UI Elements ---
+function updateUI(currentPath, history = []) {
+    // Set input field value or placeholder
+    folderPathInput.value = currentPath || DEFAULT_PATH;
+    if (!currentPath) {
+        folderPathInput.placeholder = `Default: ${DEFAULT_PATH}`;
     }
-  });
+
+    // Update Datalist
+    pastPathsDatalist.innerHTML = ''; // Clear existing options
+    history.forEach(path => {
+        const option = document.createElement('option');
+        option.value = path;
+        pastPathsDatalist.appendChild(option);
+    });
+}
+
+// --- Helper Function to Show Status Messages ---
+function showStatus(message, color = 'green', duration = 3000) {
+    statusDiv.textContent = message;
+    statusDiv.style.color = color;
+    if (duration > 0) {
+        setTimeout(() => { statusDiv.textContent = ''; }, duration);
+    }
+}
+
+// --- Function to handle saving the path ---
+function savePath() {
+    const rawInputPath = folderPathInput.value.trim();
+    // Use default path if input is empty after trimming, otherwise clean the path
+    const currentPathToSave = rawInputPath === '' ? DEFAULT_PATH : rawInputPath.replace(/^\/+|\/+$/g, '');
+
+    // Reset input visually if it was initially empty
+    if (rawInputPath === '') {
+        folderPathInput.value = DEFAULT_PATH;
+    }
+
+    // Get existing history to update it
+    chrome.storage.sync.get(['driveFolderPathHistory'], (result) => {
+        if (chrome.runtime.lastError) {
+            console.error("Error retrieving history:", chrome.runtime.lastError);
+            showStatus('Error saving (could not get history).', 'red', 0); // Show error persistently
+            return;
+        }
+
+        let history = result.driveFolderPathHistory || [];
+
+        // Update history: remove existing, add to front, trim size
+        history = history.filter(p => p !== currentPathToSave);
+        history.unshift(currentPathToSave);
+        if (history.length > MAX_HISTORY) {
+            history = history.slice(0, MAX_HISTORY);
+        }
+
+        // Save both current path and updated history
+        chrome.storage.sync.set({
+            driveFolderPath: currentPathToSave,
+            driveFolderPathHistory: history
+        }, () => {
+            if (chrome.runtime.lastError) {
+                console.error("Error saving settings:", chrome.runtime.lastError);
+                showStatus('Error saving settings.', 'red', 0); // Show error persistently
+            } else {
+                console.log('Settings saved:', { path: currentPathToSave, history });
+                // Provide appropriate feedback
+                const message = rawInputPath === '' ? `Path reset to default "${DEFAULT_PATH}".` : 'Folder path saved!';
+                const color = rawInputPath === '' ? 'orange' : 'green';
+                showStatus(message, color, 1500); // Shorter duration before closing
+                updateUI(currentPathToSave, history); // Update datalist in UI
+
+                // Close the popup automatically after a short delay
+                setTimeout(() => window.close(), 500);
+            }
+        });
+    });
+}
+
+
+// --- Load saved path and history when popup opens ---
+document.addEventListener('DOMContentLoaded', () => {
+    chrome.storage.sync.get(['driveFolderPath', 'driveFolderPathHistory'], (result) => {
+        if (chrome.runtime.lastError) {
+            console.error("Error loading settings:", chrome.runtime.lastError);
+            showStatus('Error loading settings.', 'red', 0);
+        } else {
+            updateUI(result.driveFolderPath, result.driveFolderPathHistory);
+            // Auto-focus the input field
+            folderPathInput.focus();
+            folderPathInput.select(); // Select existing text for easy replacement
+        }
+    });
 });
 
-// Save the folder path when the button is clicked
-saveButton.addEventListener('click', () => {
-  // Basic path cleanup: remove leading/trailing slashes and spaces
-  const folderPath = folderPathInput.value.trim().replace(/^\/+|\/+$/g, '');
+// --- Save path on button click ---
+saveButton.addEventListener('click', savePath);
 
-  if (folderPath) {
-    chrome.storage.sync.set({ driveFolderPath: folderPath }, () => { // Changed key
-      if (chrome.runtime.lastError) {
-        console.error("Error saving folder path:", chrome.runtime.lastError);
-        statusDiv.textContent = 'Error saving settings.';
-        statusDiv.style.color = 'red';
-      } else {
-        console.log('Folder path saved:', folderPath);
-        statusDiv.textContent = 'Folder path saved!';
-        statusDiv.style.color = 'green';
-        // Clear the status message after a few seconds
-        setTimeout(() => { statusDiv.textContent = ''; }, 3000);
-      }
-    });
-  } else {
-    // If the input is empty, reset to default 'arXiv'
-     chrome.storage.sync.set({ driveFolderPath: 'papers' }, () => { // Changed key
-        statusDiv.textContent = 'Path cannot be empty. Reset to default "papers".';
-        statusDiv.style.color = 'orange';
-         folderPathInput.value = 'papers'; // Reset input field too
-         setTimeout(() => { statusDiv.textContent = ''; }, 3000);
-     });
-  }
+// Save path on Enter key press in the input field
+folderPathInput.addEventListener('keypress', (event) => {
+    if (event.key === 'Enter') {
+        event.preventDefault(); // Prevent potential form submission if wrapped in form
+        savePath();
+    }
 });

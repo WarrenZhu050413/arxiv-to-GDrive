@@ -10,13 +10,15 @@
         </style>
     </head>
     <body>
-        <h4>arXiv Downloader Settings</h4>
+        <h4>Paper-to-GDrive Settings</h4>
         <label for="folderPathInput">Google Drive Path:</label>
-        <input type="text" id="folderPathInput" placeholder="e.g., arXiv/ML/Systems or arXiv">
+        <input type="text" id="folderPathInput" list="pastPaths" placeholder="e.g., papers">
+        <datalist id="pastPaths"></datalist>
         <button id="savePathButton">Save Path</button>
         <div id="status"></div>
         <hr>
-        <p>Use <b>[CMD+B]</b> (Mac) or <b>[CTRL+SHIFT+B]</b> (Others) on arXiv pages to save to the specified path.</p>
+        <p>Use <b>[CMD+B]</b> / <b>[CTRL+SHIFT+B]</b> to save paper.</p>
+        <p>Use <b>[CMD+SHIFT+P]</b> / <b>[CTRL+SHIFT+P]</b> to open settings.</p>
 
         <script src="popup.js"></script>
     </body>

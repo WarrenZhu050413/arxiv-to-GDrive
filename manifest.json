@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
-    "name": "paper pdf Downloader",
-    "version": "3.1",
+    "name": "Paper-to-GDrive",
+    "version": "0.5",
     "description": "This is a chrome extension to download papers into google drive. It currently supports arXiv and ACM papers.",
     "permissions": [
         "tabs",
@@ -19,12 +19,19 @@
         "extension_pages": "script-src 'self'; object-src 'self'"
     },
     "commands": {
-        "EventName": {
-            "suggested_key": {
-                "default": "Ctrl+Shift+B",
-                "mac": "Command+B"
-            },
-            "description": "Download papers into google drive."
+        "SavePaper": {
+          "suggested_key": {
+            "default": "Ctrl+Shift+B",
+            "mac": "Command+B"
+          },
+          "description": "Save current paper to Google Drive."
+        },
+        "_execute_action": {
+          "suggested_key": {
+             "default": "Ctrl+Shift+P",
+             "mac": "Command+Shift+P"
+           },
+          "description": "Open Folder Path Settings"
         }
     },
     "background": {

@@ -12,7 +12,8 @@
         "notifications"
     ],
     "host_permissions": [
-        "https://arxiv.org/*"
+        "https://arxiv.org/*",
+        "https://dl.acm.org/doi/*"
     ],
     "content_security_policy": {
         "extension_pages": "script-src 'self'; object-src 'self'"

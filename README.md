@@ -1,12 +1,17 @@
-# arxiv-pdf-downloader
+# Paper-to-Gdrive
 
-This is a Chrome extension designed to download PDFs published on arXiv directly to your Google Drive. The folder downloaded can be specified by the user via the Chrome icon popup.
+This is a Chrome extension designed to download papers directly to your Google Drive. The folder downloaded can be specified by the user via the Chrome icon popup.
 
 The motivation for developing this extension is to enable better collaboration with Gemini Advanced's GDrive integration to search for research works.
 
 (Note: I am personally new to javascript. Most of the code is written with the help of Gemini 2.5 pro. Do not trust it completely.)
 
-The repository is built on top of https://github.com/yoheikikuta/arxiv-pdf-downloader by yoheikikuta. Currently, it added folder organization functionality beyond the original implementation.
+The repository is built on top of https://github.com/yoheikikuta/arxiv-pdf-downloader by yoheikikuta. Currently, it added folder organization functionality beyond the original implementation, and adds websites beyond arXiv.
+
+Supported Websites:
+
+arXiv
+ACM
 
 <p align="center">
   <img src="https://imgur.com/utyIndE.gif" />
@@ -20,6 +25,7 @@ The repository is built on top of https://github.com/yoheikikuta/arxiv-pdf-downl
 - Enable the Google Drive API at https://console.developers.google.com/apis.
 - Create credentials (OAuth 2.0 client ID).
   ![Google Cloud credentials](https://imgur.com/xqVtmCM.png)
+  - The Item ID of the credential should match the one in `chrome://extensions/`.
 - Set your Client ID obtained from the credential into `manifest.json`.
 - Add your own email as a Test user to the GDrive App that the credentials links to.
 - Allow notifications.

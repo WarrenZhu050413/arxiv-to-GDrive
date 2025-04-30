@@ -13,8 +13,8 @@ document.addEventListener('DOMContentLoaded', () => {
       folderPathInput.value = result.driveFolderPath;
     } else {
       // Set a default placeholder if nothing is saved yet
-      folderPathInput.placeholder = 'Default: arXiv';
-      folderPathInput.value = 'arXiv'; // Also set default value
+      folderPathInput.placeholder = 'Default: papers';
+      folderPathInput.value = 'papers'; // Also set default value
     }
   });
 });
@@ -40,10 +40,10 @@ saveButton.addEventListener('click', () => {
     });
   } else {
     // If the input is empty, reset to default 'arXiv'
-     chrome.storage.sync.set({ driveFolderPath: 'arXiv' }, () => { // Changed key
-        statusDiv.textContent = 'Path cannot be empty. Reset to default "arXiv".';
+     chrome.storage.sync.set({ driveFolderPath: 'papers' }, () => { // Changed key
+        statusDiv.textContent = 'Path cannot be empty. Reset to default "papers".';
         statusDiv.style.color = 'orange';
-         folderPathInput.value = 'arXiv'; // Reset input field too
+         folderPathInput.value = 'papers'; // Reset input field too
          setTimeout(() => { statusDiv.textContent = ''; }, 3000);
      });
   }

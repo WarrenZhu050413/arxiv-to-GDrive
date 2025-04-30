@@ -4,7 +4,7 @@ const folderPathInput = document.getElementById('folderPathInput');
 const saveButton = document.getElementById('savePathButton');
 const statusDiv = document.getElementById('status');
 const pastPathsDatalist = document.getElementById('pastPaths');
-const MAX_HISTORY = 10; // Max number of paths to remember
+const MAX_HISTORY = 100; // Max number of paths to remember
 const DEFAULT_PATH = 'papers';
 
 // --- Helper Function to Update UI Elements ---

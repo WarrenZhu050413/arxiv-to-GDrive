@@ -368,7 +368,7 @@ chrome.commands.onCommand.addListener(async (command) => {
             const now = Date.now();
             if (lastDownload.url === tab.url && now - lastDownload.time < download_interval) {
                 console.log('Skipping duplicate download request for URL:', tab.url);
-                showNotification('INFO', 'Please wait before downloading the same paper again.', 'info');
+                showNotification('INFO', 'Skipping duplicate download request for URL: ' + tab.url, 'info');
                 return;
             }
             lastDownload = { url: tab.url, time: now };
@@ -401,6 +401,7 @@ chrome.commands.onCommand.addListener(async (command) => {
 
                     const fileInfo = { path: filepdf_url, name: save_filename };
                     console.log('Attempting to download:', fileInfo);
+                    showNotification('INFO', 'Downloading: ' + fileInfo.name, 'info');
 
                     const googleDriveUploader = new GoogleDriveUploader();
                     // Pass the retrieved folderPath to uploadFile

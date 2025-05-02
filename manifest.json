@@ -13,7 +13,9 @@
     ],
     "host_permissions": [
         "https://arxiv.org/*",
-        "https://dl.acm.org/doi/*"
+        "https://dl.acm.org/doi/*",
+        "https://www.usenix.org/conference/*",
+        "https://www.usenix.org/system/files/*"
     ],
     "content_security_policy": {
         "extension_pages": "script-src 'self'; object-src 'self'"
@@ -26,7 +28,14 @@
           },
           "description": "Save current paper to Google Drive."
         },
-        "_execute_action": {
+        "SavePaperWithCustomTitle": {
+          "suggested_key": {
+            "default": "Ctrl+Shift+X",
+            "mac": "Command+X"
+          },
+          "description": "Save current paper to Google Drive with custom title."
+        },
+        "set_folder_path": {
           "suggested_key": {
              "default": "Ctrl+Shift+P",
              "mac": "Command+Shift+P"

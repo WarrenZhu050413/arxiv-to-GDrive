@@ -21,8 +21,8 @@
     "commands": {
         "SavePaper": {
           "suggested_key": {
-            "default": "Ctrl+Shift+B",
-            "mac": "Command+B"
+            "default": "Ctrl+Shift+E",
+            "mac": "Command+E"
           },
           "description": "Save current paper to Google Drive."
         },

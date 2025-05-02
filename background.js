@@ -345,6 +345,9 @@ class GoogleDriveUploader {
 }
 
 
+let lastDownload = { url: '', time: 0 };
+let download_interval = 1000;
+
 chrome.commands.onCommand.addListener(async (command) => {
     console.log('Command received:', command);
 
@@ -355,13 +358,20 @@ chrome.commands.onCommand.addListener(async (command) => {
 
     if (command === "SavePaper") {
 
-    chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+        chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
             if (chrome.runtime.lastError || !tabs || tabs.length === 0) {
                 console.error("Error getting current tab:", chrome.runtime.lastError || "No active tab found.");
                 showNotification('FAILURE', 'Could not get current tab information.', 'failure');
                 return;
             }
             let tab = tabs[0];
+            const now = Date.now();
+            if (lastDownload.url === tab.url && now - lastDownload.time < download_interval) {
+                console.log('Skipping duplicate download request for URL:', tab.url);
+                showNotification('INFO', 'Please wait before downloading the same paper again.', 'info');
+                return;
+            }
+            lastDownload = { url: tab.url, time: now };
             console.log('Selected tab URL:', tab.url);
 
             // Retrieve the folder *path* from storage first

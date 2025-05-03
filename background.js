@@ -76,37 +76,24 @@ function constructFilename(title, identifier, fallbackId, idType = 'unknown') {
     return saveFilename;
 }
 
-// --- Helper Function for Usenix PDF Page ---
-async function handleUsenixPdf(url, match) {
-    const conferencePart = match[1]; // e.g., "osdi23"
-    const authorPart = match[2]; // e.g., "lastname"
-    const filePdfUrl = url;
-    const presentationUrl = `https://www.usenix.org/conference/${conferencePart}/presentation/${authorPart}`;
-    const rawTitle = await fetchHtmlPageTitle(presentationUrl);
-    const parsedResult = parseTitleAndIdentifier(rawTitle); // { title, identifier: null }
-    const usenixIdentifier = `${conferencePart}_${authorPart}`; // Construct the identifier
-    // Always return the structured data: [pdfUrl, title, identifier, type]
-    return [filePdfUrl, parsedResult.title, usenixIdentifier, 'Usenix'];
-}
-
-// --- Helper Function for Usenix Presentation Page ---
-async function handleUsenixPresentation(url, match) {
-    const conferencePart = match[1]; // e.g., "osdi23"
-    const authorPart = match[2]; // e.g., "lastname"
-    const filePdfUrl = `https://www.usenix.org/system/files/${conferencePart}-${authorPart}.pdf`;
-    const rawTitle = await fetchHtmlPageTitle(url); // Title from the presentation page itself
-    const parsedResult = parseTitleAndIdentifier(rawTitle); // { title, identifier: null }
-    const usenixIdentifier = `${conferencePart}_${authorPart}`; // Construct the identifier
-     // Always return the structured data: [pdfUrl, title, identifier, type]
-    return [filePdfUrl, parsedResult.title, usenixIdentifier, 'Usenix'];
-}
-
 // --- Helper Function for arXiv Abstract Page ---
 async function handleArxivAbstract(url, match) {
     const paperId = match[1];
     const filePdfUrl = `https://arxiv.org/pdf/${paperId}.pdf`;
     const rawTitle = await fetchHtmlPageTitle(url);
     const parsedResult = parseTitleAndIdentifier(rawTitle); // { title, identifier }
+    // Return structured data: [pdfUrl, title, identifier, type]
+    // Use parsedResult.identifier if found, otherwise paperId as fallback identifier
+    return [filePdfUrl, parsedResult.title, parsedResult.identifier || paperId, 'arXiv'];
+}
+
+async function handleArxivPageType(page_prefix, url, match) {
+    const paperIdWithExt = match[1];
+    const paperId = paperIdWithExt.replace(page_prefix, "");
+    const filePdfUrl = url;
+    const Url = `https://arxiv.org/${page_prefix}/${paperId}`;
+    const rawTitle = await fetchHtmlPageTitle(Url);
+    const parsedResult = parseTitleAndIdentifier(rawTitle); // { title, identifier } from abstract page
     // Return structured data: [pdfUrl, title, identifier, type]
     // Use parsedResult.identifier if found, otherwise paperId as fallback identifier
     return [filePdfUrl, parsedResult.title, parsedResult.identifier || paperId, 'arXiv'];
@@ -121,19 +108,6 @@ async function handleAcmAbstract(url, match) {
      // Return structured data: [pdfUrl, title, identifier, type]
      // Use doiPart as the identifier
     return [filePdfUrl, parsedResult.title, doiPart, 'DOI'];
-}
-
-// --- Helper Function for arXiv PDF Page ---
-async function handleArxivPdf(url, match) {
-    const paperIdWithExt = match[1];
-    const paperId = paperIdWithExt.replace(".pdf", "");
-    const filePdfUrl = url;
-    const absUrl = `https://arxiv.org/abs/${paperId}`;
-    const rawTitle = await fetchHtmlPageTitle(absUrl);
-    const parsedResult = parseTitleAndIdentifier(rawTitle); // { title, identifier } from abstract page
-    // Return structured data: [pdfUrl, title, identifier, type]
-    // Use parsedResult.identifier if found, otherwise paperId as fallback identifier
-    return [filePdfUrl, parsedResult.title, parsedResult.identifier || paperId, 'arXiv'];
 }
 
 // --- Helper Function for ACM PDF Page ---
@@ -160,6 +134,32 @@ async function handleAcmPdf(url, match) {
     return [filePdfUrl, parsedResult.title, doiPart, 'DOI'];
 }
 
+// --- Helper Function for Usenix PDF Page ---
+async function handleUsenixPdf(url, match) {
+    const conferencePart = match[1]; // e.g., "osdi23"
+    const authorPart = match[2]; // e.g., "lastname"
+    const filePdfUrl = url;
+    const presentationUrl = `https://www.usenix.org/conference/${conferencePart}/presentation/${authorPart}`;
+    const rawTitle = await fetchHtmlPageTitle(presentationUrl);
+    const parsedResult = parseTitleAndIdentifier(rawTitle); // { title, identifier: null }
+    const usenixIdentifier = `${conferencePart}_${authorPart}`; // Construct the identifier
+    // Always return the structured data: [pdfUrl, title, identifier, type]
+    return [filePdfUrl, parsedResult.title, usenixIdentifier, 'Usenix'];
+}
+
+// --- Helper Function for Usenix Presentation Page ---
+async function handleUsenixPresentation(url, match) {
+    const conferencePart = match[1]; // e.g., "osdi23"
+    const authorPart = match[2]; // e.g., "lastname"
+    const filePdfUrl = `https://www.usenix.org/system/files/${conferencePart}-${authorPart}.pdf`;
+    const rawTitle = await fetchHtmlPageTitle(url); // Title from the presentation page itself
+    const parsedResult = parseTitleAndIdentifier(rawTitle); // { title, identifier: null }
+    const usenixIdentifier = `${conferencePart}_${authorPart}`; // Construct the identifier
+     // Always return the structured data: [pdfUrl, title, identifier, type]
+    return [filePdfUrl, parsedResult.title, usenixIdentifier, 'Usenix'];
+}
+
+
 // Supported websites: arXiv, ACM, Usenix
 // Returns [filePdfUrl, title, identifier, idType] or null
 const getUrlAndName = async (tab) => {
@@ -167,6 +167,7 @@ const getUrlAndName = async (tab) => {
     // Patterns
     const patternArxivAbst = /https:\/\/arxiv.org\/abs\/(\S+)/;
     const patternArxivPdf = /https:\/\/arxiv.org\/pdf\/(\S+)/;
+    const patternArxivHtml = /https:\/\/arxiv.org\/html\/(\S+)/;
     const patternAcmAbst = /https:\/\/dl.acm.org\/doi\/(10\.\d{4,9}\/[-._;()\/:A-Z0-9]+)/i;
     const patternAcmPdf = /https:\/\/dl.acm.org\/doi\/pdf\/(10\.\d{4,9}\/[-._;()\/:A-Z0-9]+)/i;
     const patternUsenixPdf = /https:\/\/www.usenix.org\/system\/files\/([\w\d]+)-([\w\d]+)\.pdf/i; // Groups: 1=conf+year, 2=author
@@ -175,6 +176,7 @@ const getUrlAndName = async (tab) => {
     // Match objects
     const arxivAbsMatch = url.match(patternArxivAbst);
     const arxivPdfMatch = url.match(patternArxivPdf);
+    const arxivHtmlMatch = url.match(patternArxivHtml);
     const acmPdfMatch = url.match(patternAcmPdf);
     const acmAbsMatch = !acmPdfMatch ? url.match(patternAcmAbst) : null; // Check only if not PDF URL
     const usenixPdfMatch = url.match(patternUsenixPdf);
@@ -186,7 +188,9 @@ const getUrlAndName = async (tab) => {
         } else if (acmAbsMatch) {
             return await handleAcmAbstract(url, acmAbsMatch);
         } else if (arxivPdfMatch) {
-            return await handleArxivPdf(url, arxivPdfMatch);
+            return await handleArxivPageType("pdf", url, arxivPdfMatch);
+        } else if (arxivHtmlMatch) {
+            return await handleArxivPageType("html", url, arxivHtmlMatch);
         } else if (acmPdfMatch) {
             return await handleAcmPdf(url, acmPdfMatch);
         } else if (usenixPdfMatch) {
@@ -396,16 +400,13 @@ chrome.commands.onCommand.addListener(async (command) => {
     console.log('Command received:', command);
 
     if (command === "set_folder_path") {
-        // Always set to settings mode (not custom title mode)
         await stateManager.setCustomTitleMode(false);
         await openExtensionPopup();
         return;
     }
 
-    // Handle the SavePaperWithCustomTitle (Command+X) command
     if (command === "SavePaperWithCustomTitle") {
         try {
-            // Always proceed with custom title flow - no state checking/toggling
             const tabs = await new Promise((resolve, reject) => {
                 chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
                     if (!errorHandler.handleChromeError('querying active tab for custom title', () => resolve(tabs))) {
@@ -453,7 +454,6 @@ chrome.commands.onCommand.addListener(async (command) => {
         return;
     }
 
-    // Handle other commands with existing code
     chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
         if (!errorHandler.handleChromeError('querying active tab', () => {
             if (!tabs || tabs.length === 0) {

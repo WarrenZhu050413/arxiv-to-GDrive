@@ -1,17 +1,10 @@
-async function openExtensionPopup() {
-    try {
-      // Get the current window
-      const [currentWindow] = await chrome.windows.getLastFocused();
-      if (currentWindow) {
-        await chrome.action.openPopup();
-        console.log("Popup open requested.");
-      } else {
-        console.error("Could not get the last focused window.");
-      }
-    } catch (error) {
-      console.error("Error opening popup:", error);
-    }
-  }
+// Import utilities
+import { openExtensionPopup, closePopupFromBackground } from './utils/common/window_utils.js';
+import { stateManager } from './utils/common/storage_utils.js';
+import { showNotification } from './utils/common/notification_utils.js';
+import { errorHandler } from './utils/common/error_utils.js';
+
+// Original openExtensionPopup function is replaced with the imported one
 
 const fetchHtmlPageTitle = async (url) => {
     try {
@@ -210,21 +203,6 @@ const getUrlAndName = async (tab) => {
     }
 };
 
-const showNotification = (title, message, type) => {
-    chrome.notifications.create('', {
-        type: 'basic',
-        iconUrl: 'images/icon_128.png',
-        title: title,
-        message: message
-    }, (notificationId) => {
-        if (chrome.runtime.lastError) {
-            console.error(chrome.runtime.lastError.message);
-        } else {
-            console.log(`Notification ${type}: ${notificationId}`);
-        }
-    });
-};
-
 class GoogleDriveUploader {
     constructor() {
         this.apiUrl = 'https://www.googleapis.com/drive/v3/files';
@@ -418,85 +396,120 @@ chrome.commands.onCommand.addListener(async (command) => {
     console.log('Command received:', command);
 
     if (command === "set_folder_path") {
-        openExtensionPopup();
+        await openExtensionPopup();
         return;
     }
 
+    // Handle the SavePaperWithCustomTitle (Command+X) command
+    if (command === "SavePaperWithCustomTitle") {
+        try {
+            // Check if already in custom title mode
+            const isInCustomMode = await stateManager.isInCustomTitleMode();
+            
+            if (isInCustomMode) {
+                // We're already in custom title mode, so toggle it off
+                console.log("Already in custom title mode, toggling it off");
+                await stateManager.setCustomTitleMode(false);
+                
+                // Try to close any open popup
+                await closePopupFromBackground();
+                return;
+            }
+            
+            // Otherwise, proceed with custom title flow
+            // Get current tab info
+            const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+            if (!tabs || tabs.length === 0) {
+                throw new Error("No active tab found");
+            }
+            
+            const tab = tabs[0];
+            const urlResult = await getUrlAndName(tab);
+            
+            if (!urlResult) {
+                showNotification('INFO', 'Current page is not a supported paper page.', 'info');
+                return;
+            }
+            
+            const [filepdf_url, title, identifier, idType] = urlResult;
+            
+            if (!filepdf_url || !identifier) {
+                throw new Error("Could not determine PDF URL or identifier");
+            }
+            
+            // Store data and set custom title mode
+            const customTitleData = {
+                pdfUrl: filepdf_url,
+                originalTitle: title,
+                identifier: identifier,
+                idType: idType
+            };
+            
+            await stateManager.setCustomTitleMode(true, customTitleData);
+            
+            // Open popup immediately
+            await openExtensionPopup();
+        } catch (error) {
+            console.error("Error handling custom title command:", error);
+            showNotification('FAILURE', 
+                errorHandler.formatErrorMessage(error, "Error processing custom title command"),
+                'failure');
+        }
+        return;
+    }
+
+    // Handle other commands with existing code
     chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
         if (chrome.runtime.lastError || !tabs || tabs.length === 0) {
             console.error("Error getting current tab:", chrome.runtime.lastError || "No active tab found.");
             showNotification('FAILURE', 'Could not get current tab information.', 'failure');
             return;
         }
+        
         let tab = tabs[0];
         const now = Date.now();
 
-        // Debounce check
-        if (lastDownload.url === tab.url && now - lastDownload.time < download_interval && (command === "SavePaper" || command === "SavePaperWithCustomTitle")) {
-             console.log('Skipping duplicate download request for URL:', tab.url);
-             showNotification('INFO', 'Skipping duplicate download request for URL: ' + tab.url, 'info');
-             return;
-        }
-         lastDownload = { url: tab.url, time: now }; // Update last download attempt info
-
-        console.log('Selected tab URL:', tab.url);
-
-        try {
-            const urlResult = await getUrlAndName(tab);
-            if (!urlResult) {
-                showNotification('INFO', 'Current page is not a supported paper page.', 'info');
+        // Only handle SavePaper command here
+        if (command === "SavePaper") {
+            // Debounce check
+            if (lastDownload.url === tab.url && now - lastDownload.time < download_interval) {
+                console.log('Skipping duplicate download request for URL:', tab.url);
+                showNotification('INFO', 'Skipping duplicate download request for URL: ' + tab.url, 'info');
                 return;
             }
+            lastDownload = { url: tab.url, time: now };
 
-            const [filepdf_url, title, identifier, idType] = urlResult;
+            console.log('Selected tab URL:', tab.url);
 
-            if (!filepdf_url || !identifier) { // Title can be null, but need URL and identifier
-                 throw new Error("Could not determine PDF URL or identifier.");
-            }
+            try {
+                const urlResult = await getUrlAndName(tab);
+                if (!urlResult) {
+                    showNotification('INFO', 'Current page is not a supported paper page.', 'info');
+                    return;
+                }
 
-            if (command === "SavePaper") {
+                const [filepdf_url, title, identifier, idType] = urlResult;
+
+                if (!filepdf_url || !identifier) {
+                    throw new Error("Could not determine PDF URL or identifier.");
+                }
+
                 // Construct filename automatically
-                 const save_filename = constructFilename(title, identifier, identifier, idType); // Use identifier as fallback
+                const save_filename = constructFilename(title, identifier, identifier, idType);
                 const fileInfo = { path: filepdf_url, name: save_filename };
                 console.log('Attempting standard download:', fileInfo);
                 showNotification('INFO', 'Saving: ' + fileInfo.name, 'info');
 
-                // Retrieve folder path and upload
-                chrome.storage.sync.get(['driveFolderPath'], async (storageResult) => {
-                    if (chrome.runtime.lastError) {
-                         console.error("Error retrieving folder path from storage:", chrome.runtime.lastError);
-                         showNotification('FAILURE', 'Could not read extension settings.', 'failure');
-                         return;
-                    }
-                    const folderPath = storageResult.driveFolderPath || 'papers';
-                    console.log(`Using Google Drive path: '${folderPath}'`);
-                    await uploadToDrive(fileInfo, folderPath); // Use the generic upload function
-                });
-
-            } else if (command === "SavePaperWithCustomTitle") {
-                console.log("Initiating custom title flow...");
-                // Store necessary info for the popup
-                const customTitleData = {
-                    isCustomTitleFlow: true,
-                    pdfUrl: filepdf_url,
-                    originalTitle: title, // Send the original title
-                    identifier: identifier,
-                    idType: idType
-                };
-                chrome.storage.local.set({ customTitleData: customTitleData }, () => {
-                    if (chrome.runtime.lastError) {
-                        console.error("Error saving custom title data to local storage:", chrome.runtime.lastError);
-                         showNotification('FAILURE', 'Failed to initiate custom title save.', 'failure');
-                    } else {
-                        console.log("Custom title data stored, opening popup.");
-                        openExtensionPopup(); // Open the popup
-                    }
-                });
+                // Get folder path from storage
+                const folderPath = await stateManager.getFolderPath();
+                console.log(`Using Google Drive path: '${folderPath}'`);
+                await uploadToDrive(fileInfo, folderPath);
+            } catch (error) {
+                console.error('Error processing SavePaper command:', error);
+                showNotification('FAILURE', 
+                    errorHandler.formatErrorMessage(error, "Error processing save command"),
+                    'failure');
             }
-
-        } catch (error) {
-             console.error('Error processing command:', error);
-             showNotification('FAILURE', `Error processing command: ${error.message || 'Unknown error'}`, 'failure');
         }
     });
 });
@@ -510,30 +523,54 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (!pdfUrl || !saveFilename) {
              console.error("Invalid data received for custom upload:", message.data);
              showNotification('FAILURE', 'Failed to save with custom title due to missing data.', 'failure');
-             return; // Indicate async response is not needed or failure
+             sendResponse({ success: false, error: 'Missing required data' });
+             return true;
         }
 
         const fileInfo = { path: pdfUrl, name: saveFilename };
 
-        // Retrieve folder path and trigger upload
-        chrome.storage.sync.get(['driveFolderPath'], async (storageResult) => {
-            if (chrome.runtime.lastError) {
-                 console.error("Error retrieving folder path from storage:", chrome.runtime.lastError);
-                 showNotification('FAILURE', 'Could not read extension settings for custom save.', 'failure');
-                 // Optionally sendResponse({success: false, error: ...})
-                 return;
-            }
-            const folderPath = storageResult.driveFolderPath || 'papers';
+        // Get folder path and trigger upload
+        stateManager.getFolderPath().then(folderPath => {
             console.log(`Uploading custom title file to path: '${folderPath}'`);
-            await uploadToDrive(fileInfo, folderPath); // Use the generic upload function
-             // Optionally sendResponse({success: true}) after uploadToDrive completes if needed
+            uploadToDrive(fileInfo, folderPath).then(() => {
+                sendResponse({ success: true });
+            }).catch(error => {
+                sendResponse({ 
+                    success: false, 
+                    error: errorHandler.formatErrorMessage(error)
+                });
+            });
+        }).catch(error => {
+            console.error("Error retrieving folder path from storage:", error);
+            showNotification('FAILURE', 'Could not read extension settings for custom save.', 'failure');
+            sendResponse({ success: false, error: 'Failed to get folder path' });
         });
 
         // Return true to indicate you wish to send a response asynchronously
-        // (although in this case, we handle notifications directly)
         return true;
     }
-     // Handle other potential messages if needed
+    
+    // Handle force close popup message
+    if (message.action === 'forceClosePopup') {
+        console.log('Received request to force close popup:', message.source);
+        // Try to close popup from background
+        closePopupFromBackground().then(success => {
+            if (success) {
+                console.log('Successfully closed popup from background');
+            } else {
+                console.warn('Failed to close popup from background');
+            }
+            sendResponse({ success });
+        }).catch(error => {
+            console.error('Error closing popup:', error);
+            sendResponse({ success: false, error: error.message });
+        });
+        
+        return true;
+    }
+     
+    // Handle other potential messages if needed
+    return false;
 });
 
 console.log('Background script loaded');

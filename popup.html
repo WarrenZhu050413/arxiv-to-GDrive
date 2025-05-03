@@ -12,26 +12,26 @@
     <body>
         <!-- Section for Custom Title Input (hidden by default) -->
         <div id="customTitleSection" style="display: none;">
-            <h4>Save with Custom Title</h4>
-            <label for="customTitleInput">Enter Title:</label>
+            <h3>Save with Custom Title</h3>
+            <label for="customTitleInput" style="font-size: 1.2em;">Enter Title:</label>
             <input type="text" id="customTitleInput">
             <button id="saveCustomTitleButton">Save to Drive</button>
-            <div id="customTitleStatus"></div> <!-- Optional: For status messages -->
+            <div id="customTitleStatus"></div>
         </div>
 
         <!-- Section for Regular Settings -->
         <div id="settingsSection">
-            <h4>Paper-to-GDrive Settings</h4>
+            <h3>Paper-to-GDrive Settings</h3>
             <label for="folderPathInput">Google Drive Path:</label>
             <input type="text" id="folderPathInput" list="pastPaths" placeholder="e.g., papers">
             <datalist id="pastPaths"></datalist>
             <button id="savePathButton">Save Path</button>
             <div id="status"></div>
             <hr>
-            <p>Use <b>[CMD+SHIFT+B]</b> to save paper.</p>
-            <p>Use <b>[CMD+SHIFT+P]</b> / <b>[CTRL+SHIFT+P]</b> to open settings.</p>
+            <p>Use <b>[CMD+B]</b> to save paper.</p>
+            <p>Use <b>[CMD+X]</b> to add custom file name.</p>
+            <p>Use <b>[CMD+SHIFT+P]</b> to open settings.</p>
         </div>
-
-        <script src="popup.js"></script>
+        <script src="popup.js" type="module"></script>
     </body>
 </html>

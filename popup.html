@@ -6,13 +6,13 @@
             body { width: 300px; padding: 10px; font-family: sans-serif; }
             label, input, button { display: block; margin-bottom: 8px; }
             input { width: calc(100% - 10px); }
-            #status { font-size: 0.9em; color: green; }
+            #status, #customTitleStatus { font-size: 0.9em; color: green; }
         </style>
     </head>
     <body>
         <!-- Section for Custom Title Input (hidden by default) -->
         <div id="customTitleSection" style="display: none;">
-            <h3>Save with Custom Title</h3>
+            <h3>Customize Title</h3>
             <label for="customTitleInput" style="font-size: 1.2em;">Enter Title:</label>
             <input type="text" id="customTitleInput">
             <button id="saveCustomTitleButton">Save to Drive</button>
@@ -28,9 +28,8 @@
             <button id="savePathButton">Save Path</button>
             <div id="status"></div>
             <hr>
-            <p>Use <b>[CMD+B]</b> to save paper.</p>
-            <p>Use <b>[CMD+X]</b> to add custom file name.</p>
-            <p>Use <b>[CMD+SHIFT+P]</b> to open settings.</p>
+            <!-- Usage instructions will be dynamically inserted here -->
+            <div id="usageInstructions"></div>
         </div>
         <script src="popup.js" type="module"></script>
     </body>

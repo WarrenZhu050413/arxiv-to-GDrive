@@ -1,4 +1,5 @@
 // storage_utils.js - Utilities for managing storage and state
+import { errorHandler } from './error_utils.js';
 
 /**
  * State manager for handling all storage operations
@@ -10,8 +11,13 @@ export const stateManager = {
    */
   async getCustomTitleData() {
     try {
-      const result = await chrome.storage.local.get(['customTitleData']);
-      return result.customTitleData || null;
+      return new Promise((resolve, reject) => {
+        chrome.storage.local.get(['customTitleData'], (result) => {
+          if (!errorHandler.handleChromeError('retrieving custom title data', () => resolve(result.customTitleData || null))) {
+            reject(chrome.runtime.lastError || new Error("Failed to retrieve custom title data"));
+          }
+        });
+      });
     } catch (error) {
       console.error("Error retrieving custom title data:", error);
       return null;
@@ -23,8 +29,13 @@ export const stateManager = {
    * @returns {Promise<boolean>} true if in custom title mode, false otherwise
    */
   async isInCustomTitleMode() {
-    const data = await this.getCustomTitleData();
-    return !!(data && data.isCustomTitleFlow);
+    try {
+      const data = await this.getCustomTitleData();
+      return !!(data && data.isCustomTitleFlow);
+    } catch (error) {
+      console.error("Error checking custom title mode:", error);
+      return false;
+    }
   },
 
   /**
@@ -34,22 +45,34 @@ export const stateManager = {
    * @returns {Promise<boolean>} true if operation succeeded, false otherwise
    */
   async setCustomTitleMode(isActive, data = {}) {
-    try {
-      if (isActive) {
-        await chrome.storage.local.set({
-          customTitleData: {
+    return new Promise((resolve) => {
+      try {
+        if (isActive) {
+          const customTitleData = {
             isCustomTitleFlow: true,
+            timestamp: Date.now(),
             ...data
-          }
-        });
-      } else {
-        await chrome.storage.local.remove('customTitleData');
+          };
+          
+          chrome.storage.local.set({ customTitleData }, () => {
+            errorHandler.handleChromeError('setting custom title mode', () => {
+              console.log("Custom title mode activated with data:", customTitleData);
+              resolve(true);
+            });
+          });
+        } else {
+          chrome.storage.local.remove('customTitleData', () => {
+            errorHandler.handleChromeError('removing custom title mode', () => {
+              console.log("Custom title mode deactivated");
+              resolve(true);
+            });
+          });
+        }
+      } catch (error) {
+        console.error(`Error ${isActive ? 'setting' : 'removing'} custom title mode:`, error);
+        resolve(false);
       }
-      return true;
-    } catch (error) {
-      console.error(`Error ${isActive ? 'setting' : 'removing'} custom title mode:`, error);
-      return false;
-    }
+    });
   },
 
   /**
@@ -58,8 +81,13 @@ export const stateManager = {
    */
   async getFolderPath() {
     try {
-      const result = await chrome.storage.sync.get(['driveFolderPath']);
-      return result.driveFolderPath || 'papers';
+      return new Promise((resolve, reject) => {
+        chrome.storage.sync.get(['driveFolderPath'], (result) => {
+          if (!errorHandler.handleChromeError('retrieving folder path', () => resolve(result.driveFolderPath || 'papers'))) {
+            reject(chrome.runtime.lastError || new Error("Failed to retrieve folder path"));
+          }
+        });
+      });
     } catch (error) {
       console.error("Error retrieving folder path:", error);
       return 'papers';
@@ -72,8 +100,13 @@ export const stateManager = {
    */
   async getPathHistory() {
     try {
-      const result = await chrome.storage.sync.get(['driveFolderPathHistory']);
-      return result.driveFolderPathHistory || [];
+      return new Promise((resolve, reject) => {
+        chrome.storage.sync.get(['driveFolderPathHistory'], (result) => {
+          if (!errorHandler.handleChromeError('retrieving path history', () => resolve(result.driveFolderPathHistory || []))) {
+            reject(chrome.runtime.lastError || new Error("Failed to retrieve path history"));
+          }
+        });
+      });
     } catch (error) {
       console.error("Error retrieving path history:", error);
       return [];
@@ -86,13 +119,19 @@ export const stateManager = {
    * @returns {Promise<boolean>} true if operation succeeded, false otherwise
    */
   async saveFolderPath(path) {
-    try {
-      await chrome.storage.sync.set({ driveFolderPath: path });
-      return true;
-    } catch (error) {
-      console.error("Error saving folder path:", error);
-      return false;
-    }
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.sync.set({ driveFolderPath: path }, () => {
+          errorHandler.handleChromeError('saving folder path', () => {
+            console.log(`Folder path saved: ${path}`);
+            resolve(true);
+          });
+        });
+      } catch (error) {
+        console.error("Error saving folder path:", error);
+        resolve(false);
+      }
+    });
   },
 
   /**
@@ -111,8 +150,14 @@ export const stateManager = {
         ...history.filter(p => p !== path)
       ].slice(0, maxHistory);
       
-      await chrome.storage.sync.set({ driveFolderPathHistory: newHistory });
-      return newHistory;
+      return new Promise((resolve) => {
+        chrome.storage.sync.set({ driveFolderPathHistory: newHistory }, () => {
+          errorHandler.handleChromeError('updating path history', () => {
+            console.log(`Path history updated with: ${path}`);
+            resolve(newHistory);
+          });
+        });
+      });
     } catch (error) {
       console.error("Error updating path history:", error);
       return [];

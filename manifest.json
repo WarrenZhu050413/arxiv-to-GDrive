@@ -2,7 +2,7 @@
     "manifest_version": 3,
     "name": "Paper-to-GDrive",
     "version": "0.5",
-    "description": "This is a chrome extension to download papers into google drive. It currently supports arXiv and ACM papers.",
+    "description": "Chrome extension to download papers into Google Drive. Currently supports arXiv, ACM, and NSDI papers.",
     "permissions": [
         "tabs",
         "downloads",
@@ -22,25 +22,25 @@
     },
     "commands": {
         "SavePaper": {
-          "suggested_key": {
-            "default": "Ctrl+Shift+E",
-            "mac": "Command+E"
-          },
-          "description": "Save current paper to Google Drive."
+            "suggested_key": {
+                "default": "Ctrl+Shift+E",
+                "mac": "Command+E"
+            },
+            "description": "Save current paper to Google Drive."
         },
         "SavePaperWithCustomTitle": {
-          "suggested_key": {
-            "default": "Ctrl+Shift+X",
-            "mac": "Command+X"
-          },
-          "description": "Save current paper to Google Drive with custom title."
+            "suggested_key": {
+                "default": "Ctrl+Shift+X",
+                "mac": "Command+X"
+            },
+            "description": "Save current paper to Google Drive with custom title."
         },
         "set_folder_path": {
-          "suggested_key": {
-             "default": "Ctrl+Shift+P",
-             "mac": "Command+Shift+P"
-           },
-          "description": "Open Folder Path Settings"
+            "suggested_key": {
+                "default": "Ctrl+Shift+P",
+                "mac": "Command+Shift+P"
+            },
+            "description": "Open folder path settings."
         }
     },
     "background": {

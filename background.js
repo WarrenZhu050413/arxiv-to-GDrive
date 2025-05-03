@@ -417,8 +417,15 @@ chrome.commands.onCommand.addListener(async (command) => {
             }
             
             // Otherwise, proceed with custom title flow
-            // Get current tab info
-            const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+            // Get current tab info using Promise-based wrapper for better error handling
+            const tabs = await new Promise((resolve, reject) => {
+                chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                    if (!errorHandler.handleChromeError('querying active tab for custom title', () => resolve(tabs))) {
+                        reject(new Error("Failed to query active tab"));
+                    }
+                });
+            });
+            
             if (!tabs || tabs.length === 0) {
                 throw new Error("No active tab found");
             }
@@ -460,9 +467,14 @@ chrome.commands.onCommand.addListener(async (command) => {
 
     // Handle other commands with existing code
     chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
-        if (chrome.runtime.lastError || !tabs || tabs.length === 0) {
-            console.error("Error getting current tab:", chrome.runtime.lastError || "No active tab found.");
-            showNotification('FAILURE', 'Could not get current tab information.', 'failure');
+        if (!errorHandler.handleChromeError('querying active tab', () => {
+            if (!tabs || tabs.length === 0) {
+                console.error("No active tab found.");
+                showNotification('FAILURE', 'Could not find an active browser window.', 'failure');
+                return false;
+            }
+            return true;
+        })) {
             return;
         }
         
@@ -518,32 +530,44 @@ chrome.commands.onCommand.addListener(async (command) => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === 'uploadCustomTitle') {
         console.log('Received upload request from popup with custom title:', message.data);
-        const { pdfUrl, saveFilename } = message.data;
+        const { pdfUrl, saveFilename, customTitle } = message.data;
 
-        if (!pdfUrl || !saveFilename) {
-             console.error("Invalid data received for custom upload:", message.data);
-             showNotification('FAILURE', 'Failed to save with custom title due to missing data.', 'failure');
-             sendResponse({ success: false, error: 'Missing required data' });
+        if (!pdfUrl) {
+             console.error("Invalid data received for custom upload - missing PDF URL:", message.data);
+             showNotification('FAILURE', 'Failed to save with custom title: PDF URL is missing.', 'failure');
+             sendResponse({ success: false, error: 'Missing PDF URL' });
              return true;
         }
 
-        const fileInfo = { path: pdfUrl, name: saveFilename };
+        // If saveFilename is not provided, generate one from customTitle
+        const filename = saveFilename || (customTitle ? `${customTitle}.pdf` : 'custom-paper.pdf');
+        const fileInfo = { path: pdfUrl, name: filename };
+        
+        console.log(`Processing custom upload for: ${fileInfo.name}`);
+        showNotification('INFO', `Preparing to save: ${fileInfo.name}`, 'info');
 
-        // Get folder path and trigger upload
+        // Get folder path and trigger upload with error handling
         stateManager.getFolderPath().then(folderPath => {
             console.log(`Uploading custom title file to path: '${folderPath}'`);
             uploadToDrive(fileInfo, folderPath).then(() => {
+                console.log(`Successfully uploaded custom file: ${fileInfo.name}`);
                 sendResponse({ success: true });
             }).catch(error => {
+                const errorMessage = errorHandler.formatErrorMessage(error, 'Upload failed');
+                console.error(`Failed to upload custom file: ${errorMessage}`, error);
+                showNotification('FAILURE', `Upload failed: ${errorMessage}`, 'failure');
                 sendResponse({ 
                     success: false, 
-                    error: errorHandler.formatErrorMessage(error)
+                    error: errorMessage
                 });
             });
         }).catch(error => {
-            console.error("Error retrieving folder path from storage:", error);
-            showNotification('FAILURE', 'Could not read extension settings for custom save.', 'failure');
-            sendResponse({ success: false, error: 'Failed to get folder path' });
+            if (!errorHandler.handleChromeError('retrieving folder path from storage', () => {})) {
+                const errorMessage = errorHandler.formatErrorMessage(error, 'Failed to get folder path');
+                console.error("Error retrieving folder path from storage:", error);
+                showNotification('FAILURE', `Could not read extension settings: ${errorMessage}`, 'failure');
+                sendResponse({ success: false, error: errorMessage });
+            }
         });
 
         // Return true to indicate you wish to send a response asynchronously

@@ -1,44 +1,34 @@
-# Paper-to-GDrive Extension TODOs
+# Refactoring Plan for Paper-to-GDrive Extension
 
-## Code Refactoring
-- [x] Create a proper utils folder structure:
-  - [x] Create a utils/common directory
-  - [x] Create utils/common/window_utils.js for popup operations
-  - [x] Create utils/common/storage_utils.js for state management
-  - [x] Create utils/common/notification_utils.js for messaging
-  - [x] Create utils/common/error_utils.js for error handling
+## Description Unification
+- [x] Create central descriptions.js file to store all text content
+- [x] Update popup.html to dynamically load descriptions from descriptions.js
+- [x] Update manifest.json to use descriptions from descriptions.js (via build script)
+- [x] Update README.md to use descriptions from descriptions.js (via build script)
+- [x] Create build scripts to automate description updates
 
-## Fix Command+X and Command+Shift+P Issues
-- [x] Fix popup opening mechanism in background.js:
-  - [x] Improve openExtensionPopup() function to reliably open the popup
-  - [x] Remove unnecessary storage checks before opening the popup
-  - [x] Add proper error handling for popup operations
-- [x] Fix popup closing mechanism:
-  - [x] Implement a robust popup closing function for Command+Shift+P
-  - [x] Add keyboard shortcut listeners in popup.js for Command+Shift+P
-- [x] Improve Command+X toggle logic:
-  - [x] Simplify the state tracking
-  - [x] Implement proper detection of whether popup is already open
+## Code Organization
+- [x] Move savePath and loadSettings to path_utils.js
+- [x] Remove duplicate forceClosePopup and handleCommandShiftP functions from popup_handlers.js
+- [x] Collect all global constants into a single constants.js file:
+  - [x] MAX_HISTORY (from path_utils.js)
+  - [x] DEFAULT_PATH (from path_utils.js)
+  - [x] CUSTOM_TITLE_TIMEOUT_VALUE (from popup_handlers.js)
+  - [x] Added other common constants (timeout values, API URLs, storage keys)
 
-## State Management
-- [x] Create a unified state management approach:
-  - [x] Implement proper state tracking for customTitleMode
-  - [x] Add reliable methods to check if the popup is open
-  - [x] Remove direct manipulation of customTitleModeActive variable
+## Cleanup
+- [x] Ensure consistent file structure and organization
+- [x] Add comment headers to each file explaining its purpose
+- [x] Update imports to reflect new file structure
+- [x] Remove any unused functions or dead code
+- [x] Fix build scripts to use ES Modules instead of CommonJS
+- [x] Improve error handling using error_utils.js
 
-## Performance Optimization
-- [x] Reduce latency in Command+X operation:
-  - [x] Use Promise.all() for parallel operations where possible
-  - [x] Cache data when feasible
-  - [x] Show the popup immediately upon Command+X, then load data
+## Completed Tasks
+- [x] Run the build scripts to update manifest.json and README.md
+- [x] Fix bugs in the build scripts and improve reliability
 
-## Event Handling
-- [x] Fix keyboard shortcut handling:
-  - [x] Implement reliable event listeners for Command+Shift+P
-  - [x] Fix issues with key detection (case sensitivity, event properties)
-
-## Testing
-- [ ] Test all keyboard shortcuts
-  - [ ] Test Command+X in various states
-  - [ ] Test Command+Shift+P in various states
-  - [ ] Test repeated usages of shortcuts 
+## Future Improvements
+- [ ] Add JSDoc comments for better documentation
+- [ ] Consider adding unit tests for the utilities
+- [ ] Implement a bundler for production builds

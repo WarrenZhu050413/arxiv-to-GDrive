@@ -6,7 +6,6 @@ export const MAX_HISTORY = 100;
 
 // Timeout Values
 export const POPUP_CLOSE_TIMEOUT = 500;
-export const CUSTOM_TITLE_TIMEOUT_VALUE = 1500;
 export const SUCCESS_NOTIFICATION_TIMEOUT = 1500;
 export const ERROR_NOTIFICATION_TIMEOUT = 3000;
 

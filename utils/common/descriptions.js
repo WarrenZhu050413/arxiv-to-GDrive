@@ -19,14 +19,36 @@ export const KEYBOARD_SHORTCUTS = {
         mac: "CMD+SHIFT+P",
         default: "CTRL+SHIFT+P",
         description: "Open folder path settings."
+    },
+    closePopup: {
+        mac: "ESC",
+        default: "ESC",
+        description: "Close the popup."
     }
 };
 
+// Helper function to get shortcut descriptions
+function getShortcutDescriptions(format = 'text') {
+    const shortcuts = [
+        { key: 'savePaper', label: 'Save Paper' },
+        { key: 'saveCustomTitle', label: 'Save with Custom Title' },
+        { key: 'openSettings', label: 'Settings' },
+        { key: 'closePopup', label: 'Close Popup' }
+    ];
+    
+    return shortcuts.map(({ key, label }) => {
+        const shortcut = KEYBOARD_SHORTCUTS[key];
+        if (format === 'html') {
+            return `<p>Use <b>[${shortcut.mac}]</b> to ${shortcut.description.toLowerCase().replace(/\.$/, '')}</p>`;
+        } else {
+            return `- ${label}: Use ${shortcut.mac} (for Mac) or ${shortcut.default} (for others) to ${shortcut.description.toLowerCase().replace(/\.$/, '')}`;
+        }
+    }).join(format === 'html' ? '\n        ' : '\n');
+}
+
 // Usage instructions
 export const USAGE_INSTRUCTIONS = `
-- Save Paper: Use ${KEYBOARD_SHORTCUTS.savePaper.mac} (for Mac) or ${KEYBOARD_SHORTCUTS.savePaper.default} (for others) to save paper to Google Drive.
-- Save with Custom Title: Use ${KEYBOARD_SHORTCUTS.saveCustomTitle.mac} (for Mac) or ${KEYBOARD_SHORTCUTS.saveCustomTitle.default} (for others) to save with a custom filename.
-- Settings: Use ${KEYBOARD_SHORTCUTS.openSettings.mac} (for Mac) or ${KEYBOARD_SHORTCUTS.openSettings.default} (for others) to open settings.
+${getShortcutDescriptions()}
 `;
 
 // For README - use hardcoded values since we're reading this as a string in Node.js
@@ -41,8 +63,6 @@ export const README_USAGE = `
 // Get HTML format of usage instructions for popup.html
 export function getHTMLUsageInstructions() {
     return `
-        <p>Use <b>[${KEYBOARD_SHORTCUTS.savePaper.mac}]</b> to save paper.</p>
-        <p>Use <b>[${KEYBOARD_SHORTCUTS.saveCustomTitle.mac}]</b> to add custom file name.</p>
-        <p>Use <b>[${KEYBOARD_SHORTCUTS.openSettings.mac}]</b> to open settings.</p>
+        ${getShortcutDescriptions('html')}
     `;
 } 

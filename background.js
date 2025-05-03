@@ -1,5 +1,5 @@
 // Import utilities
-import { openExtensionPopup, closePopupFromBackground } from './utils/common/window_utils.js';
+import { openExtensionPopup } from './utils/common/window_utils.js';
 import { stateManager } from './utils/common/storage_utils.js';
 import { showNotification } from './utils/common/notification_utils.js';
 import { errorHandler } from './utils/common/error_utils.js';
@@ -396,6 +396,8 @@ chrome.commands.onCommand.addListener(async (command) => {
     console.log('Command received:', command);
 
     if (command === "set_folder_path") {
+        // Always set to settings mode (not custom title mode)
+        await stateManager.setCustomTitleMode(false);
         await openExtensionPopup();
         return;
     }
@@ -403,21 +405,7 @@ chrome.commands.onCommand.addListener(async (command) => {
     // Handle the SavePaperWithCustomTitle (Command+X) command
     if (command === "SavePaperWithCustomTitle") {
         try {
-            // Check if already in custom title mode
-            const isInCustomMode = await stateManager.isInCustomTitleMode();
-            
-            if (isInCustomMode) {
-                // We're already in custom title mode, so toggle it off
-                console.log("Already in custom title mode, toggling it off");
-                await stateManager.setCustomTitleMode(false);
-                
-                // Try to close any open popup
-                await closePopupFromBackground();
-                return;
-            }
-            
-            // Otherwise, proceed with custom title flow
-            // Get current tab info using Promise-based wrapper for better error handling
+            // Always proceed with custom title flow - no state checking/toggling
             const tabs = await new Promise((resolve, reject) => {
                 chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
                     if (!errorHandler.handleChromeError('querying active tab for custom title', () => resolve(tabs))) {
@@ -529,13 +517,13 @@ chrome.commands.onCommand.addListener(async (command) => {
 // Listener for messages from the popup (e.g., to trigger upload with custom title)
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === 'uploadCustomTitle') {
-        console.log('Received upload request from popup with custom title:', message.data);
+        console.log('[Background] Received upload request from popup with custom title:', message.data);
         const { pdfUrl, saveFilename, customTitle } = message.data;
 
         if (!pdfUrl) {
-             console.error("Invalid data received for custom upload - missing PDF URL:", message.data);
+             console.error("[Background] Invalid data received for custom upload - missing PDF URL:", message.data);
              showNotification('FAILURE', 'Failed to save with custom title: PDF URL is missing.', 'failure');
-             sendResponse({ success: false, error: 'Missing PDF URL' });
+             sendResponse({ success: false, message: 'Missing PDF URL' });
              return true;
         }
 
@@ -543,30 +531,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const filename = saveFilename || (customTitle ? `${customTitle}.pdf` : 'custom-paper.pdf');
         const fileInfo = { path: pdfUrl, name: filename };
         
-        console.log(`Processing custom upload for: ${fileInfo.name}`);
+        console.log(`[Background] Processing custom upload for: ${fileInfo.name}`);
         showNotification('INFO', `Preparing to save: ${fileInfo.name}`, 'info');
 
         // Get folder path and trigger upload with error handling
         stateManager.getFolderPath().then(folderPath => {
-            console.log(`Uploading custom title file to path: '${folderPath}'`);
-            uploadToDrive(fileInfo, folderPath).then(() => {
-                console.log(`Successfully uploaded custom file: ${fileInfo.name}`);
+            console.log(`[Background] Uploading custom title file to path: '${folderPath}'`);
+            uploadToDrive(fileInfo, folderPath).then(async () => {
+                console.log(`[Background] Successfully uploaded custom file: ${fileInfo.name}`);
+                
+                // CRITICAL STEP: Update state from background after success
+                console.log('[Background] Upload success. Calling stateManager.setCustomTitleMode(false)...');
+                await stateManager.setCustomTitleMode(false);
+                console.log('[Background] stateManager.setCustomTitleMode(false) finished.');
+                
                 sendResponse({ success: true });
             }).catch(error => {
                 const errorMessage = errorHandler.formatErrorMessage(error, 'Upload failed');
-                console.error(`Failed to upload custom file: ${errorMessage}`, error);
+                console.error(`[Background] Failed to upload custom file: ${errorMessage}`, error);
                 showNotification('FAILURE', `Upload failed: ${errorMessage}`, 'failure');
                 sendResponse({ 
                     success: false, 
-                    error: errorMessage
+                    message: errorMessage
                 });
             });
         }).catch(error => {
             if (!errorHandler.handleChromeError('retrieving folder path from storage', () => {})) {
                 const errorMessage = errorHandler.formatErrorMessage(error, 'Failed to get folder path');
-                console.error("Error retrieving folder path from storage:", error);
+                console.error("[Background] Error retrieving folder path from storage:", error);
                 showNotification('FAILURE', `Could not read extension settings: ${errorMessage}`, 'failure');
-                sendResponse({ success: false, error: errorMessage });
+                sendResponse({ success: false, message: errorMessage });
             }
         });
 
@@ -574,26 +568,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
     
-    // Handle force close popup message
-    if (message.action === 'forceClosePopup') {
-        console.log('Received request to force close popup:', message.source);
-        // Try to close popup from background
-        closePopupFromBackground().then(success => {
-            if (success) {
-                console.log('Successfully closed popup from background');
-            } else {
-                console.warn('Failed to close popup from background');
-            }
-            sendResponse({ success });
-        }).catch(error => {
-            console.error('Error closing popup:', error);
-            sendResponse({ success: false, error: error.message });
-        });
-        
-        return true;
-    }
-     
-    // Handle other potential messages if needed
     return false;
 });
 

@@ -5,7 +5,6 @@ import { errorHandler } from '../common/error_utils.js';
 import { savePath, loadSettings } from '../common/path_utils.js';
 import { showNotification } from '../common/notification_utils.js';
 import { 
-    CUSTOM_TITLE_TIMEOUT_VALUE,
     ERROR_NOTIFICATION_TIMEOUT,
     SUCCESS_NOTIFICATION_TIMEOUT
 } from '../common/constants.js';
@@ -87,64 +86,42 @@ async function sendCustomTitleRequest(dataToSend, saveCustomTitleButton, customT
     showNotification('INFO', 'Saving with title: ' + dataToSend.customTitle, 'info');
     saveCustomTitleButton.disabled = true;
     customTitleInput.disabled = true;
+    console.log("[Popup] Sending custom title request to background:", dataToSend);
     
-    try {
-        // Send message to background script
-        const response = await new Promise((resolve, reject) => {
-            chrome.runtime.sendMessage(
-                { action: 'uploadCustomTitle', data: dataToSend }, 
-                (response) => {
-                    if (!errorHandler.handleChromeError('sending custom title to background', () => resolve(response))) {
-                        reject(chrome.runtime.lastError || new Error("Unknown error sending message"));
-                    }
+    // Send the message - no need to await the full background process
+    chrome.runtime.sendMessage(
+        { action: 'uploadCustomTitle', data: dataToSend },
+        (response) => {
+            // This callback might run if the popup stays open briefly,
+            // but we no longer rely on it for critical state management.
+            if (chrome.runtime.lastError) {
+                console.error("[Popup] Error sending message:", chrome.runtime.lastError.message);
+                showStatus(statusDiv, customTitleStatus,
+                    errorHandler.formatErrorMessage(chrome.runtime.lastError, 'Failed to send request'),
+                    'red', 0, true);
+                // Re-enable UI on send error
+                saveCustomTitleButton.disabled = false;
+                customTitleInput.disabled = false;
+                customTitleInput.focus();
+                // Keep popup open on immediate send error
+            } else if (response) {
+                console.log("[Popup] Response received from background:", response);
+                if (response.success) {
+                    showStatus(statusDiv, customTitleStatus, 'Saved successfully!', 'green', SUCCESS_NOTIFICATION_TIMEOUT, true);
+                    // Close the popup after showing the success message
+                    setTimeout(() => window.close(), SUCCESS_NOTIFICATION_TIMEOUT);
+                } else {
+                    console.error("[Popup] Error response from background:", response);
+                    const errorMsg = response.message || 'Upload failed.';
+                    showStatus(statusDiv, customTitleStatus, errorMsg, 'red', 0, true);
+                    // Re-enable UI on error
+                    saveCustomTitleButton.disabled = false;
+                    customTitleInput.disabled = false;
+                    customTitleInput.focus();
                 }
-            );
-        });
-
-        // Clear custom title data
-        await stateManager.setCustomTitleMode(false);
-
-        // Re-enable UI
-        saveCustomTitleButton.disabled = false;
-        customTitleInput.disabled = false;
-
-        if (response && response.success) {
-            console.log("Received success response from background.");
-            showStatus(statusDiv, customTitleStatus, 'Saved successfully!', 'green', SUCCESS_NOTIFICATION_TIMEOUT, true);
-            
-            // Show success message, then switch to default popup
-            setTimeout(() => {
-                // Find and get references to the needed elements
-                const settingsSection = document.getElementById('settingsSection');
-                const customTitleSection = document.getElementById('customTitleSection');
-                const folderPathInput = document.getElementById('folderPath');
-                const pastPathsDatalist = document.getElementById('pastPaths');
-                
-                // Switch to settings mode
-                if (settingsSection && customTitleSection) {
-                    customTitleSection.style.display = 'none';
-                    settingsSection.style.display = 'block';
-                    
-                    // Load settings if we have the necessary elements
-                    if (folderPathInput && pastPathsDatalist) {
-                        loadSettings(folderPathInput, pastPathsDatalist, statusDiv, customTitleStatus);
-                    }
-                }
-            }, CUSTOM_TITLE_TIMEOUT_VALUE);
-        } else {
-            console.error("Received failure response from background:", response);
-            const errorMsg = (response && response.message) ? response.message : 'Upload failed.';
-            showStatus(statusDiv, customTitleStatus, errorMsg, 'red', 0, true);
-            customTitleInput.focus();
+            }
         }
-    } catch (error) {
-        console.error("Error receiving response from background:", error);
-        showStatus(statusDiv, customTitleStatus, 
-            errorHandler.formatErrorMessage(error, 'Unknown communication error'), 
-            'red', 0, true);
-        saveCustomTitleButton.disabled = false;
-        customTitleInput.disabled = false;
-    }
+    );
 }
 
 // --- Initialization function for popup ---

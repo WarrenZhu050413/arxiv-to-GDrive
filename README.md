@@ -38,6 +38,7 @@ Supported Websites:
 ## USAGE
 
 
+
 - Perform interactive authentication the first time.
 - **Save Paper:** Use **[CMD+E] (for MAC) or [CTRL+SHIFT+E] (for OTHERS)** on supported paper pages (arXiv abstract/PDF, ACM abstract/PDF, NSDI) to save the paper to your specified Google Drive path.
 - **Save Paper with Custom Title:** Use **[CMD+X]** instead of **[CMD+E]** to save with custom titles.

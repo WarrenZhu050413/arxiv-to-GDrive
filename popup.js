@@ -4,9 +4,6 @@ import { initializePopup } from './utils/popup/popup_handlers.js';
 import { getHTMLUsageInstructions } from './utils/common/descriptions.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
-    // Add keyboard shortcut handler for Command+Shift+P
-    document.addEventListener('keydown', handleCommandShiftP);
-    
     // Get DOM elements
     const settingsSection = document.getElementById('settingsSection');
     const customTitleSection = document.getElementById('customTitleSection');

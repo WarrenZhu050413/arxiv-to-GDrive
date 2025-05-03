@@ -31,7 +31,7 @@ export async function savePath(folderPathInput, statusDiv, customTitleStatus) {
         // Update UI
         updateUI(folderPathInput, document.getElementById('pastPaths'), currentPathToSave, newHistory, DEFAULT_PATH);
         
-        // Close popup after success
+        // Close popup after success, Timeout used for better visuals
         setTimeout(() => window.close(), POPUP_CLOSE_TIMEOUT);
     } catch (error) {
         console.error("Error saving settings:", error);

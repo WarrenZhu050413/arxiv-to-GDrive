@@ -4,8 +4,7 @@ import { stateManager } from './utils/common/storage_utils.js';
 import { showNotification } from './utils/common/notification_utils.js';
 import { errorHandler } from './utils/common/error_utils.js';
 
-// Original openExtensionPopup function is replaced with the imported one
-
+// Fetches the title of a webpage from the abstract page
 const fetchHtmlPageTitle = async (url) => {
     try {
         const response = await fetch(url);
@@ -124,7 +123,6 @@ async function handleAcmPdf(url, match) {
             parsedResult = parseTitleAndIdentifier(rawTitle); // { title, identifier: null } from abstract page
         } catch (error) {
             console.error("Error fetching title for ACM PDF, proceeding without title:", error);
-             // Keep parsedResult as { title: null, identifier: null }
         }
     } else {
          console.error("Could not extract DOI part from ACM PDF URL:", url);
@@ -159,6 +157,56 @@ async function handleUsenixPresentation(url, match) {
     return [filePdfUrl, parsedResult.title, usenixIdentifier, 'Usenix'];
 }
 
+// Function to handle any non-supported webpage by saving it as HTML
+async function handleGenericWebpage(tab) {
+    try {
+        const url = tab.url;
+        
+        // Try to fetch the title from the HTML content using the original function
+        let title;
+        try {
+            const fetchedTitle = await fetchHtmlPageTitle(url);
+            title = fetchedTitle || tab.title || 'Webpage';
+        } catch (error) {
+            console.error('Error fetching title from HTML:', error);
+            title = tab.title || 'Webpage';
+        }
+        
+        const safeName = title.replace(/[\/\\?%*:|"<>]/g, '-').replace(/\s+/g, ' ').trim();
+        const filename = `${safeName}.html`;
+        
+        // Execute script in the tab to get the HTML content
+        const result = await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            function: () => {
+                return {
+                    html: document.documentElement.outerHTML,
+                    url: window.location.href,
+                    title: document.title
+                };
+            }
+        });
+        
+        if (!result || !result[0] || !result[0].result || !result[0].result.html) {
+            throw new Error("Failed to capture webpage content");
+        }
+        
+        const htmlContent = result[0].result.html;
+        
+        // Create a blob from the HTML content
+        const blob = new Blob([htmlContent], { type: 'text/html' });
+        
+        // Return the file info directly with the blob content
+        return {
+            name: filename,
+            isBlob: true,
+            content: blob
+        };
+    } catch (error) {
+        console.error("Error capturing webpage as HTML:", error);
+        throw error;
+    }
+}
 
 // Supported websites: arXiv, ACM, Usenix
 // Returns [filePdfUrl, title, identifier, idType] or null
@@ -223,7 +271,16 @@ class GoogleDriveUploader {
                 throw new Error('Failed to authenticate user');
             }
 
-            const blob = await this.fetchFileBlob(file.path);
+            // Get the blob - either directly from content or by fetching it
+            let blob;
+            if (file.content && file.content instanceof Blob) {
+                console.log('Using provided blob content directly');
+                blob = file.content;
+            } else if (file.path) {
+                blob = await this.fetchFileBlob(file.path);
+            } else {
+                throw new Error('No content or path provided for upload');
+            }
 
             // Get the final parent folder ID using the path 
             const parentFolderId = await this.findOrCreateFolderHierarchy(folderPath, token);
@@ -264,7 +321,7 @@ class GoogleDriveUploader {
         try {
             const response = await fetch(filePath);
             if (!response.ok) {
-                throw new Error(`HTTP error fetching PDF! status: ${response.status}`);
+                throw new Error(`HTTP error fetching file! status: ${response.status}`);
             }
             return await response.blob();
         } catch (error) {
@@ -422,25 +479,41 @@ chrome.commands.onCommand.addListener(async (command) => {
             const tab = tabs[0];
             const urlResult = await getUrlAndName(tab);
             
-            if (!urlResult) {
-                showNotification('INFO', 'Current page is not a supported paper page.', 'info');
-                return;
-            }
+            let customTitleData;
             
-            const [filepdf_url, title, identifier, idType] = urlResult;
-            
-            if (!filepdf_url || !identifier) {
-                throw new Error("Could not determine PDF URL or identifier");
+            if (urlResult) {
+                const [filepdf_url, title, identifier, idType] = urlResult;
+                
+                if (!filepdf_url || !identifier) {
+                    throw new Error("Could not determine PDF URL or identifier");
+                }
+                
+                // Store data for supported paper websites
+                customTitleData = {
+                    pdfUrl: filepdf_url,
+                    originalTitle: title,
+                    identifier: identifier,
+                    idType: idType,
+                    type: 'paper'
+                };
+            } else {
+                // Handle non-supported webpage
+                try {
+                    const genericFile = await handleGenericWebpage(tab);
+                    
+                    // Store data for generic webpage
+                    customTitleData = {
+                        originalTitle: tab.title || 'Webpage',
+                        content: genericFile.content,
+                        type: 'html'
+                    };
+                } catch (error) {
+                    console.error("Error preparing generic webpage for custom title:", error);
+                    throw new Error("Failed to prepare webpage content: " + error.message);
+                }
             }
             
             // Store data and set custom title mode
-            const customTitleData = {
-                pdfUrl: filepdf_url,
-                originalTitle: title,
-                identifier: identifier,
-                idType: idType
-            };
-            
             await stateManager.setCustomTitleMode(true, customTitleData);
             
             // Open popup immediately
@@ -483,26 +556,31 @@ chrome.commands.onCommand.addListener(async (command) => {
 
             try {
                 const urlResult = await getUrlAndName(tab);
-                if (!urlResult) {
-                    showNotification('INFO', 'Current page is not a supported paper page.', 'info');
-                    return;
+                let fileInfo;
+                
+                if (urlResult) {
+                    const [filepdf_url, title, identifier, idType] = urlResult;
+
+                    if (!filepdf_url || !identifier) {
+                        throw new Error("Could not determine PDF URL or identifier.");
+                    }
+
+                    // Construct filename automatically
+                    const save_filename = constructFilename(title, identifier, identifier, idType);
+                    fileInfo = { path: filepdf_url, name: save_filename };
+                    console.log('Attempting standard download:', fileInfo);
+                    showNotification('INFO', 'Saving: ' + fileInfo.name, 'info');
+                } else {
+                    // Handle non-supported webpage by saving as HTML
+                    fileInfo = await handleGenericWebpage(tab);
+                    console.log('Attempting to save webpage as HTML:', fileInfo);
+                    showNotification('INFO', 'Saving webpage as HTML: ' + fileInfo.name, 'info');
                 }
-
-                const [filepdf_url, title, identifier, idType] = urlResult;
-
-                if (!filepdf_url || !identifier) {
-                    throw new Error("Could not determine PDF URL or identifier.");
-                }
-
-                // Construct filename automatically
-                const save_filename = constructFilename(title, identifier, identifier, idType);
-                const fileInfo = { path: filepdf_url, name: save_filename };
-                console.log('Attempting standard download:', fileInfo);
-                showNotification('INFO', 'Saving: ' + fileInfo.name, 'info');
 
                 // Get folder path from storage
                 const folderPath = await stateManager.getFolderPath();
                 console.log(`Using Google Drive path: '${folderPath}'`);
+                
                 await uploadToDrive(fileInfo, folderPath);
             } catch (error) {
                 console.error('Error processing SavePaper command:', error);
@@ -518,20 +596,27 @@ chrome.commands.onCommand.addListener(async (command) => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === 'uploadCustomTitle') {
         console.log('[Background] Received upload request from popup with custom title:', message.data);
-        const { pdfUrl, saveFilename, customTitle } = message.data;
-
-        if (!pdfUrl) {
-             console.error("[Background] Invalid data received for custom upload - missing PDF URL:", message.data);
-             showNotification('FAILURE', 'Failed to save with custom title: PDF URL is missing.', 'failure');
-             sendResponse({ success: false, message: 'Missing PDF URL' });
+        const { pdfUrl, saveFilename, customTitle, content, type } = message.data;
+        
+        if (!pdfUrl && !content) {
+             console.error("[Background] Invalid data received for custom upload - missing content source:", message.data);
+             showNotification('FAILURE', 'Failed to save with custom title: Content source is missing.', 'failure');
+             sendResponse({ success: false, message: 'Missing content source' });
              return true;
         }
 
         // If saveFilename is not provided, generate one from customTitle
-        const filename = saveFilename || (customTitle ? `${customTitle}.pdf` : 'custom-paper.pdf');
-        const fileInfo = { path: pdfUrl, name: filename };
+        const filename = saveFilename || (customTitle ? 
+            (type === 'html' ? `${customTitle}.html` : `${customTitle}.pdf`) : 
+            (type === 'html' ? 'webpage.html' : 'custom-paper.pdf'));
+            
+        const fileInfo = { 
+            path: pdfUrl,  // May be undefined for HTML content
+            name: filename, 
+            content: content // For HTML content
+        };
         
-        console.log(`[Background] Processing custom upload for: ${fileInfo.name}`);
+        console.log(`[Background] Processing custom upload for: ${fileInfo.name}, type: ${type || 'paper'}`);
         showNotification('INFO', `Preparing to save: ${fileInfo.name}`, 'info');
 
         // Get folder path and trigger upload with error handling
@@ -550,6 +635,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 const errorMessage = errorHandler.formatErrorMessage(error, 'Upload failed');
                 console.error(`[Background] Failed to upload custom file: ${errorMessage}`, error);
                 showNotification('FAILURE', `Upload failed: ${errorMessage}`, 'failure');
+                
                 sendResponse({ 
                     success: false, 
                     message: errorMessage
@@ -560,6 +646,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 const errorMessage = errorHandler.formatErrorMessage(error, 'Failed to get folder path');
                 console.error("[Background] Error retrieving folder path from storage:", error);
                 showNotification('FAILURE', `Could not read extension settings: ${errorMessage}`, 'failure');
+                
                 sendResponse({ success: false, message: errorMessage });
             }
         });

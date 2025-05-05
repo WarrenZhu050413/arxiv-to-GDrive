@@ -2,20 +2,22 @@
     "manifest_version": 3,
     "name": "Paper-to-GDrive",
     "version": "0.5",
-    "description": "Chrome extension to download papers into Google Drive. Currently supports arXiv, ACM, and NSDI papers.",
+    "description": "Chrome extension to download papers into Google Drive. Supports arXiv, ACM, NSDI papers, and saving any webpage as HTML.",
     "permissions": [
         "tabs",
         "downloads",
         "identity",
         "declarativeNetRequest",
         "storage",
-        "notifications"
+        "notifications",
+        "scripting"
     ],
     "host_permissions": [
         "https://arxiv.org/*",
         "https://dl.acm.org/doi/*",
         "https://www.usenix.org/conference/*",
-        "https://www.usenix.org/system/files/*"
+        "https://www.usenix.org/system/files/*",
+        "<all_urls>"
     ],
     "content_security_policy": {
         "extension_pages": "script-src 'self'; object-src 'self'"

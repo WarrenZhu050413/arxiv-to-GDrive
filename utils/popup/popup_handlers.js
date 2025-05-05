@@ -43,7 +43,8 @@ export async function saveCustomTitle(customTitleInput, saveCustomTitleButton, s
                 const dataToSend = {
                     customTitle: customTitle,
                     pdfUrl: activeTab.url,
-                    saveFilename: `${customTitle}.pdf`
+                    saveFilename: `${customTitle}.pdf`,
+                    type: 'paper'
                 };
                 
                 console.log('Creating custom title data from active tab:', dataToSend);
@@ -56,16 +57,35 @@ export async function saveCustomTitle(customTitleInput, saveCustomTitleButton, s
             return;
         }
 
-        const dataToSend = {
-            customTitle: customTitle,
-            pdfUrl: customTitleData.pdfUrl,
-            saveFilename: `${customTitle} [${customTitleData.identifier || 'unknown'}].pdf`,
-            originalData: {
+        // Check what type of content we're dealing with
+        const isHtml = customTitleData.type === 'html';
+        const fileExtension = isHtml ? '.html' : '.pdf';
+        
+        // Construct the data to send based on content type
+        let dataToSend;
+        
+        if (isHtml) {
+            // For HTML webpage content
+            dataToSend = {
+                customTitle: customTitle,
+                saveFilename: `${customTitle}${fileExtension}`,
+                content: customTitleData.content,
+                type: 'html'
+            };
+        } else {
+            // For paper PDF content (original behavior)
+            dataToSend = {
+                customTitle: customTitle,
                 pdfUrl: customTitleData.pdfUrl,
-                identifier: customTitleData.identifier,
-                idType: customTitleData.idType
-            }
-        };
+                saveFilename: `${customTitle} [${customTitleData.identifier || 'unknown'}]${fileExtension}`,
+                type: 'paper',
+                originalData: {
+                    pdfUrl: customTitleData.pdfUrl,
+                    identifier: customTitleData.identifier,
+                    idType: customTitleData.idType
+                }
+            };
+        }
 
         console.log('Sending message to background:', dataToSend);
         await sendCustomTitleRequest(dataToSend, saveCustomTitleButton, customTitleInput, statusDiv, customTitleStatus);
@@ -148,6 +168,16 @@ export async function initializePopup(
             customTitleInput.value = customTitleData.originalTitle || '';
             customTitleInput.focus();
             customTitleInput.select();
+            
+            // Display content type information
+            const contentTypeDisplay = document.getElementById('contentTypeDisplay');
+            if (contentTypeDisplay) {
+                const isHtml = customTitleData.type === 'html';
+                contentTypeDisplay.textContent = isHtml
+                    ? 'Saving webpage as HTML file'
+                    : 'Saving research paper as PDF file';
+                contentTypeDisplay.style.color = isHtml ? '#0066cc' : '#006600';
+            }
             
             // Attach custom title listeners
             saveCustomTitleButton.addEventListener('click', () => 

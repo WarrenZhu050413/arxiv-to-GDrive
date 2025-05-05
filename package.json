@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "update-descriptions": "node utils/build/update_descriptions.js",
-    "build": "npm run update-descriptions"
+    "build": "npm run update-descriptions",
+    "test": "jest"
   },
   "repository": {
     "type": "git",
